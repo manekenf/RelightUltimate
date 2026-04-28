@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "id": "selectedclans",
+  "version": "${version}",
+  "name": "SelectedClans",
+  "description": "Clan system for Selected Project servers",
+  "authors": ["SelectedProject Team"],
+  "license": "All Rights Reserved",
+  "icon": "assets/selectedclans/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["ua.selectedproject.clans.SelectedClans"],
+    "client": ["ua.selectedproject.clans.SelectedClansClient"]
+  },
+  "mixins": ["selectedclans.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*",
+    "selectedcore": ">=1.0.0"
+  }
+}

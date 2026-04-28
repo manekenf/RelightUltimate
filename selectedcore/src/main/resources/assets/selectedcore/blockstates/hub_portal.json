@@ -1,0 +1,6 @@
+{
+  "variants": {
+    "axis=x": { "model": "selectedcore:block/hub_portal_ew" },
+    "axis=z": { "model": "selectedcore:block/hub_portal_ns" }
+  }
+}

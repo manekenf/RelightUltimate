@@ -1,0 +1,11 @@
+{
+  "type": "selectedcore:hub",
+  "generator": {
+    "type": "minecraft:flat",
+    "settings": {
+      "layers": [],
+      "biome": "selectedcore:hub_biome",
+      "structure_overrides": []
+    }
+  }
+}

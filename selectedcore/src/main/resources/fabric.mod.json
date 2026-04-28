@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "id": "selectedcore",
+  "version": "${version}",
+  "name": "SelectedCore",
+  "description": "Core infrastructure for Selected Project server mods",
+  "authors": ["SelectedProject Team"],
+  "license": "All Rights Reserved",
+  "icon": "assets/selectedcore/icon.png",
+  "environment": "*",
+  "entrypoints": {
+    "main": ["ua.selectedproject.core.SelectedCore"],
+    "client": []
+  },
+  "mixins": ["selectedcore.mixins.json"],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "minecraft": "~1.21.1",
+    "java": ">=21",
+    "fabric-api": "*"
+  }
+}

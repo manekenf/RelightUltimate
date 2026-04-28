@@ -1,0 +1,47 @@
+version = project.core_version
+base { archivesName = "selectedcore" }
+
+loom {
+    mods {
+        selectedcore {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+dependencies {
+    // SQLite
+    implementation "org.xerial:sqlite-jdbc:3.47.2.0"
+    include "org.xerial:sqlite-jdbc:3.47.2.0"
+
+    // JDA (Discord bot)
+    implementation("net.dv8tion:JDA:5.2.2") { exclude module: 'opus-java' }
+    include("net.dv8tion:JDA:5.2.2") { exclude module: 'opus-java' }
+
+    // JDA dependencies
+    implementation 'com.neovisionaries:nv-websocket-client:2.14'
+    include 'com.neovisionaries:nv-websocket-client:2.14'
+    implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+    include 'com.squareup.okhttp3:okhttp:4.12.0'
+    implementation 'com.squareup.okio:okio-jvm:3.9.1'
+    include 'com.squareup.okio:okio-jvm:3.9.1'
+    implementation 'org.jetbrains.kotlin:kotlin-stdlib:2.1.0'
+    include 'org.jetbrains.kotlin:kotlin-stdlib:2.1.0'
+    implementation 'org.apache.commons:commons-collections4:4.4'
+    include 'org.apache.commons:commons-collections4:4.4'
+    implementation 'net.sf.trove4j:trove4j:3.0.3'
+    include 'net.sf.trove4j:trove4j:3.0.3'
+    implementation 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+    include 'com.fasterxml.jackson.core:jackson-databind:2.18.2'
+    implementation 'com.fasterxml.jackson.core:jackson-core:2.18.2'
+    include 'com.fasterxml.jackson.core:jackson-core:2.18.2'
+    implementation 'com.fasterxml.jackson.core:jackson-annotations:2.18.2'
+    include 'com.fasterxml.jackson.core:jackson-annotations:2.18.2'
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_selectedcore" }
+    }
+}

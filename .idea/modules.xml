@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="ProjectModuleManager">
+    <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.client.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.client.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.main.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.test.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedcore/selectedproject.selectedcore.client.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedcore/selectedproject.selectedcore.client.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedcore/selectedproject.selectedcore.main.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedcore/selectedproject.selectedcore.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedcore/selectedproject.selectedcore.test.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedcore/selectedproject.selectedcore.test.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedpolice/selectedproject.selectedpolice.client.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedpolice/selectedproject.selectedpolice.client.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedpolice/selectedproject.selectedpolice.main.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedpolice/selectedproject.selectedpolice.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedpolice/selectedproject.selectedpolice.test.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedpolice/selectedproject.selectedpolice.test.iml" />
+    </modules>
+  </component>
+</project>

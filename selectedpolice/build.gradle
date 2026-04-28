@@ -1,0 +1,33 @@
+version = project.police_version
+base { archivesName = "selectedpolice" }
+
+loom {
+    mods {
+        selectedpolice {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+repositories {
+    maven { url "https://hub.spigotmc.org/nexus/content/repositories/snapshots/" }
+    maven { url 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+}
+
+dependencies {
+    // Depend on SelectedCore
+    implementation project(path: ':selectedcore', configuration: 'namedElements')
+
+    // Bukkit API - compile only, provided by Arclight at runtime
+    compileOnly "org.spigotmc:spigot-api:1.21.1-R0.1-SNAPSHOT"
+
+    // PlaceholderAPI — compile-only, provided at runtime by Arclight
+    compileOnly 'me.clip:placeholderapi:2.11.6'
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_selectedpolice" }
+    }
+}

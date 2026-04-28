@@ -1,0 +1,8 @@
+{
+  "variants": {
+    "facing=north": { "model": "selectedclans:block/clan_board" },
+    "facing=south": { "model": "selectedclans:block/clan_board", "y": 180 },
+    "facing=east": { "model": "selectedclans:block/clan_board", "y": 90 },
+    "facing=west": { "model": "selectedclans:block/clan_board", "y": 270 }
+  }
+}

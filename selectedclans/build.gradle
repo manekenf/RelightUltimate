@@ -1,0 +1,22 @@
+version = project.clans_version
+base { archivesName = "selectedclans" }
+
+loom {
+    mods {
+        selectedclans {
+            sourceSet sourceSets.main
+            sourceSet sourceSets.client
+        }
+    }
+}
+
+dependencies {
+    // Depend on SelectedCore
+    implementation project(path: ':selectedcore', configuration: 'namedElements')
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_selectedclans" }
+    }
+}
