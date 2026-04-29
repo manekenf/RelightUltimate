@@ -20,14 +20,14 @@ public class NetworkHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedClans/Network");
 
     // ==================== PAYLOAD IDS ====================
-    public static final Identifier OPEN_CLAN_CREATE_SCREEN = Identifier.of("clansmod", "open_create_screen");
-    public static final Identifier OPEN_CLAN_MANAGE_SCREEN = Identifier.of("clansmod", "open_manage_screen");
-    public static final Identifier CLAN_CREATE_REQUEST = Identifier.of("clansmod", "create_request");
-    public static final Identifier CLAN_INVITE_REQUEST = Identifier.of("clansmod", "invite_request");
-    public static final Identifier CLAN_KICK_REQUEST = Identifier.of("clansmod", "kick_request");
-    public static final Identifier BOARD_INTERACTION = Identifier.of("clansmod", "board_interact");
-    public static final Identifier CLAN_DATA_SYNC = Identifier.of("clansmod", "clan_data_sync");
-    public static final Identifier CLAN_MEMBERS_SYNC = Identifier.of("clansmod", "members_sync");
+    public static final Identifier OPEN_CLAN_CREATE_SCREEN = Identifier.of("selectedclans", "open_create_screen");
+    public static final Identifier OPEN_CLAN_MANAGE_SCREEN = Identifier.of("selectedclans", "open_manage_screen");
+    public static final Identifier CLAN_CREATE_REQUEST = Identifier.of("selectedclans", "create_request");
+    public static final Identifier CLAN_INVITE_REQUEST = Identifier.of("selectedclans", "invite_request");
+    public static final Identifier CLAN_KICK_REQUEST = Identifier.of("selectedclans", "kick_request");
+    public static final Identifier BOARD_INTERACTION = Identifier.of("selectedclans", "board_interact");
+    public static final Identifier CLAN_DATA_SYNC = Identifier.of("selectedclans", "clan_data_sync");
+    public static final Identifier CLAN_MEMBERS_SYNC = Identifier.of("selectedclans", "members_sync");
 
     // ==================== C2S PAYLOADS (Client -> Server) ====================
 

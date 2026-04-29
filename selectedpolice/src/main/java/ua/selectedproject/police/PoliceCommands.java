@@ -23,7 +23,7 @@ public class PoliceCommands {
 
     private static final long PVP_COOLDOWN_SECONDS = 7L * 24 * 3600; // 1 week
     static final int MAX_ZONES_PER_OFFICER = 10;
-    static final int MAX_ZONE_VOLUME = 50;
+    static final int MAX_ZONE_VOLUME = 50_000;
 
     public static void register() {
         CommandRegistrationCallback.EVENT.register(PoliceCommands::registerAll);

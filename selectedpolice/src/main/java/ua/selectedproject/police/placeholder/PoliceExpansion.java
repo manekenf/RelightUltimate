@@ -49,7 +49,7 @@ public class PoliceExpansion extends PlaceholderExpansion {
         boolean pvp = db.isPvp(uuid);
 
         return switch (params) {
-            case "icon"   -> pvp ? "§c⚔" : "§a🛡";
+            case "icon"   -> pvp ? "§c[PVP]" : "§a[PVE]";
             case "status" -> pvp ? "PVP" : "PVE";
             default       -> null; // PAPI treats null as "placeholder not found"
         };

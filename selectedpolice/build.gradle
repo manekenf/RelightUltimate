@@ -19,6 +19,9 @@ dependencies {
     // Depend on SelectedCore
     implementation project(path: ':selectedcore', configuration: 'namedElements')
 
+    // SQLite — needed on dev classpath; production jar is bundled by selectedcore via include
+    implementation "org.xerial:sqlite-jdbc:3.47.2.0"
+
     // Bukkit API - compile only, provided by Arclight at runtime
     compileOnly "org.spigotmc:spigot-api:1.21.1-R0.1-SNAPSHOT"
 

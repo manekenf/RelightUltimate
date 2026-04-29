@@ -15,7 +15,7 @@ public class DatabaseManager {
     private final String dbPath;
 
     public DatabaseManager(String worldDirectory) {
-        this.dbPath = worldDirectory + File.separator + "clansmod.db";
+        this.dbPath = worldDirectory + File.separator + "selectedcore.db";
     }
 
     public static DatabaseManager getInstance() {
@@ -30,6 +30,7 @@ public class DatabaseManager {
 
     private void connect() {
         try {
+            Class.forName("org.sqlite.JDBC");
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
             connection.setAutoCommit(true);
             // Enable WAL mode for better concurrent read performance
@@ -38,6 +39,9 @@ public class DatabaseManager {
                 stmt.execute("PRAGMA foreign_keys=ON");
             }
             LOGGER.info("Connected to SQLite database at {}", dbPath);
+        } catch (ClassNotFoundException e) {
+            LOGGER.error("SQLite JDBC driver not found", e);
+            throw new RuntimeException("SQLite JDBC driver not found", e);
         } catch (SQLException e) {
             LOGGER.error("Failed to connect to database", e);
             throw new RuntimeException("Database connection failed", e);

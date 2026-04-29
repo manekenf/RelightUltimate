@@ -35,9 +35,10 @@ public class PoliceDatabase {
     private void connect() {
         String dbPath = FabricLoader.getInstance().getConfigDir()
                 .resolve("selectedcore")
-                .resolve("clansmod.db")
+                .resolve("selectedcore.db")
                 .toString();
         try {
+            Class.forName("org.sqlite.JDBC");
             connection = DriverManager.getConnection("jdbc:sqlite:" + dbPath);
             connection.setAutoCommit(true);
             try (Statement stmt = connection.createStatement()) {
@@ -45,6 +46,9 @@ public class PoliceDatabase {
                 stmt.execute("PRAGMA foreign_keys=ON");
             }
             LOGGER.info("PoliceDatabase connected to {}", dbPath);
+        } catch (ClassNotFoundException e) {
+            LOGGER.error("SQLite JDBC driver not found", e);
+            throw new RuntimeException("SQLite JDBC driver not found", e);
         } catch (SQLException e) {
             LOGGER.error("Failed to connect to police database", e);
             throw new RuntimeException("Police database connection failed", e);

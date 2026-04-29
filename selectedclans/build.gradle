@@ -13,6 +13,9 @@ loom {
 dependencies {
     // Depend on SelectedCore
     implementation project(path: ':selectedcore', configuration: 'namedElements')
+
+    // SQLite — needed on dev classpath; production jar is bundled by selectedcore via include
+    implementation "org.xerial:sqlite-jdbc:3.47.2.0"
 }
 
 jar {

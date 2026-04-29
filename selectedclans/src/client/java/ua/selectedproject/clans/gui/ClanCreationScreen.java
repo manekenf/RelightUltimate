@@ -13,7 +13,7 @@ import net.minecraft.util.Identifier;
 @Environment(EnvType.CLIENT)
 public class ClanCreationScreen extends Screen {
     private static final Identifier BACKGROUND_TEXTURE =
-            Identifier.of("clansmod", "textures/gui/clan_create_bg.png");
+            Identifier.of("selectedclans", "textures/gui/clan_create_bg.png");
 
     // Original texture size
     private static final int TEX_WIDTH = 86;
