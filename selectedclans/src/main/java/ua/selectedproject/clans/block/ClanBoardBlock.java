@@ -32,7 +32,7 @@ import org.jetbrains.annotations.Nullable;
 public class ClanBoardBlock extends HorizontalFacingBlock {
     public static final MapCodec<ClanBoardBlock> CODEC = createCodec(ClanBoardBlock::new);
 
-    public static final Identifier BLOCK_ID = Identifier.of(SelectedCore.MOD_ID, "clan_board");
+    public static final Identifier BLOCK_ID = Identifier.of("selectedclans", "clan_board");
     public static Block CLAN_BOARD_BLOCK;
     public static BlockItem CLAN_BOARD_ITEM;
 

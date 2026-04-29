@@ -81,6 +81,7 @@ public class PoliceCommands {
         }
 
         db.setPvp(player.getUuid(), wantPvp);
+        PvpEventHandler.applyPvpTeam(player, wantPvp);
         PapiExpansion.notifyChange(player.getUuid());
 
         if (wantPvp) {

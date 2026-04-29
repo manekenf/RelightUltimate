@@ -27,6 +27,8 @@ public class PoliceEventHandler {
     /** Stored positions for bound players — they cannot move from here. */
     private static final Map<UUID, Vec3d> boundPositions = new HashMap<>();
 
+    private static int tickCounter = 0;
+
     public static void storeBoundPosition(UUID uuid, Vec3d pos) {
         boundPositions.put(uuid, pos);
     }
@@ -39,6 +41,9 @@ public class PoliceEventHandler {
 
     private static void registerTickEvents() {
         ServerTickEvents.END_SERVER_TICK.register(server -> {
+            tickCounter++;
+            boolean doDistanceCheck = (tickCounter % 10 == 0);
+
             PoliceDatabase db = PoliceDatabase.getInstance();
             if (db == null) return;
 
@@ -47,7 +52,7 @@ public class PoliceEventHandler {
                 PlayerPvpStatus status = db.getPvpStatus(uuid);
                 if (status == null) continue;
 
-                // Handle bound player: freeze position
+                // Handle bound player: freeze position (every tick for expiry/actionbar)
                 if (status.isBound()) {
                     Instant boundUntil = status.boundUntil();
                     if (boundUntil != null && Instant.now().isAfter(boundUntil)) {
@@ -62,8 +67,8 @@ public class PoliceEventHandler {
                     if (frozen == null) {
                         // Record current pos as frozen position
                         boundPositions.put(uuid, player.getPos());
-                    } else if (player.squaredDistanceTo(frozen) > 0.25) {
-                        // Teleport back
+                    } else if (doDistanceCheck && player.squaredDistanceTo(frozen) > 0.25) {
+                        // Teleport back (every 10 ticks)
                         player.requestTeleport(frozen.x, frozen.y, frozen.z);
                     }
 
@@ -76,8 +81,8 @@ public class PoliceEventHandler {
                     }
                 }
 
-                // Handle leashed player: teleport to officer if > 6 blocks away
-                if (status.isLeashed()) {
+                // Handle leashed player: teleport to officer if > 6 blocks away (every 10 ticks)
+                if (doDistanceCheck && status.isLeashed()) {
                     UUID leashedTo = status.leashedTo();
                     if (leashedTo == null) {
                         db.setLeashed(uuid, false, null);
@@ -110,9 +115,12 @@ public class PoliceEventHandler {
             return TypedActionResult.pass(player.getStackInHand(hand));
         });
 
-        // Block block interaction for bound players
+        // Block block interaction for bound players (skip if player is in prison selection mode)
         UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
             if (world.isClient()) return ActionResult.PASS;
+            if (player instanceof ServerPlayerEntity sp && PrisonSelectionHandler.isInSelectionMode(sp.getUuid())) {
+                return ActionResult.PASS;
+            }
             PoliceDatabase db = PoliceDatabase.getInstance();
             if (db != null && db.isBound(player.getUuid())) {
                 return ActionResult.FAIL;

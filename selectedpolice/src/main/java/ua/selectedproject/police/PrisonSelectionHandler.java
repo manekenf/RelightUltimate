@@ -26,6 +26,11 @@ public class PrisonSelectionHandler {
     /** First corner already chosen, waiting for second click: uuid → first BlockPos. */
     private static final Map<UUID, BlockPos> pendingFirst = new HashMap<>();
 
+    /** Returns true if the player is currently in prison selection mode. */
+    public static boolean isInSelectionMode(UUID uuid) {
+        return selectionMode.contains(uuid);
+    }
+
     /** Put a player into selection mode and reset any prior pending corner. */
     public static void enterSelectionMode(ServerPlayerEntity player) {
         UUID uuid = player.getUuid();

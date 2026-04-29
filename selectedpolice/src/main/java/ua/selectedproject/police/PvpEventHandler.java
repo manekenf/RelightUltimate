@@ -3,6 +3,7 @@ package ua.selectedproject.police;
 import net.fabricmc.fabric.api.entity.event.v1.ServerEntityCombatEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerLivingEntityEvents;
 import net.fabricmc.fabric.api.entity.event.v1.ServerPlayerEvents;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents;
 import net.minecraft.entity.LivingEntity;
 import net.minecraft.scoreboard.Scoreboard;
 import net.minecraft.scoreboard.Team;
@@ -29,6 +30,7 @@ public class PvpEventHandler {
     static final Map<UUID, UUID> pendingBind = new HashMap<>();
 
     public static void register() {
+        registerJoinHandler();
         // Cancel PVE player damage from other players; track criminal logic
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
             if (!(entity instanceof ServerPlayerEntity victim)) return true;
@@ -164,17 +166,69 @@ public class PvpEventHandler {
             scoreboard.addScoreHolderToTeam(playerName, team);
         } else {
             scoreboard.removeScoreHolderFromTeam(playerName, team);
+            // Re-assign to pve/pvp team now that criminal tag is gone
+            PoliceDatabase db = PoliceDatabase.getInstance();
+            if (db != null) {
+                applyPvpTeam(player, db.isPvp(player.getUuid()));
+            }
         }
     }
 
-    /** Restore criminal tags on server ready (for persistent criminals across restarts). */
+    /**
+     * Assign the player to the sp_pvp or sp_pve scoreboard team.
+     * Skipped if the player is currently criminal (sp_criminal takes priority).
+     */
+    public static void applyPvpTeam(ServerPlayerEntity player, boolean isPvp) {
+        MinecraftServer server = player.getServer();
+        if (server == null) return;
+
+        Scoreboard scoreboard = server.getScoreboard();
+
+        Team pveTeam = scoreboard.getTeam("sp_pve");
+        if (pveTeam == null) {
+            pveTeam = scoreboard.addTeam("sp_pve");
+            pveTeam.setPrefix(Text.literal("§a[PVE] "));
+            pveTeam.setColor(Formatting.GREEN);
+        }
+
+        Team pvpTeam = scoreboard.getTeam("sp_pvp");
+        if (pvpTeam == null) {
+            pvpTeam = scoreboard.addTeam("sp_pvp");
+            pvpTeam.setPrefix(Text.literal("§c[PVP] "));
+            pvpTeam.setColor(Formatting.RED);
+        }
+
+        // Don't override the criminal tag
+        PoliceDatabase db = PoliceDatabase.getInstance();
+        if (db != null && db.isCriminal(player.getUuid())) return;
+
+        String playerName = player.getNameForScoreboard();
+        scoreboard.addScoreHolderToTeam(playerName, isPvp ? pvpTeam : pveTeam);
+    }
+
+    /** Restore criminal tags and assign pve/pvp teams on server ready. */
     public static void restoreCriminalTags(MinecraftServer server) {
         PoliceDatabase db = PoliceDatabase.getInstance();
         if (db == null) return;
         for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             if (db.isCriminal(player.getUuid())) {
                 applyCriminalTag(player, true);
+            } else {
+                applyPvpTeam(player, db.isPvp(player.getUuid()));
             }
         }
+    }
+
+    private static void registerJoinHandler() {
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            ServerPlayerEntity player = handler.player;
+            PoliceDatabase db = PoliceDatabase.getInstance();
+            if (db == null) return;
+            if (db.isCriminal(player.getUuid())) {
+                applyCriminalTag(player, true);
+            } else {
+                applyPvpTeam(player, db.isPvp(player.getUuid()));
+            }
+        });
     }
 }

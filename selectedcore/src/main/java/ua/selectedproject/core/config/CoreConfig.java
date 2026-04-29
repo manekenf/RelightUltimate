@@ -62,7 +62,7 @@ public class CoreConfig {
 
     // ==================== VELOCITY ====================
     public String velocityChannel = "clansmod:main";
-    public String mainServerName = "lobby"; // Velocity name for this server
+    public String mainServerName = "hub"; // Velocity name for this server
 
     // ==================== PERSISTENCE ====================
 
