@@ -97,18 +97,24 @@ public class ClanCreationScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
+        context.fillGradient(0, 0, this.width, this.height, 0xC0101010, 0xD0101010);
 
-        int offsetX = (int) (Math.sin(System.currentTimeMillis() * 0.05) * shakeOffset);
-        int drawLeft = guiLeft + offsetX;
+        int drawLeft = guiLeft;
         int drawTop = guiTop;
 
-        // Draw the background texture scaled to GUI size
+        // Draw background texture (however you're doing it now — keep it)
         context.drawTexture(BACKGROUND_TEXTURE,
                 drawLeft, drawTop,
                 0, 0,
                 GUI_WIDTH, GUI_HEIGHT,
                 GUI_WIDTH, GUI_HEIGHT);
+
+        // Draw ALL text at screen coordinates, NOT inside a scaled matrix
+        // Use guiLeft + offset * SCALE for positioning
+        context.drawText(this.textRenderer, "Назва DVPF0",
+                drawLeft + 10 * SCALE + 4,
+                drawTop + 5 * SCALE + 4,
+                0x000000, false);
 
         // "Create" button label — centered in the left button area
         context.drawCenteredTextWithShadow(this.textRenderer,
@@ -218,5 +224,16 @@ public class ClanCreationScreen extends Screen {
             return true;
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
+    }
+
+    @Override
+    public boolean shouldCloseOnEsc() {
+        return true; // keep this
+    }
+
+    // This is the key method — prevents the blur shader from being applied
+    @Override
+    public void applyBlur(float delta) {
+        // Do nothing — skip the blur shader entirely
     }
 }

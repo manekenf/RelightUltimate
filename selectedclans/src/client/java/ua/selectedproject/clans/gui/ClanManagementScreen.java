@@ -111,14 +111,24 @@ public class ClanManagementScreen extends Screen {
 
     @Override
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
-        this.renderBackground(context, mouseX, mouseY, delta);
+        context.fillGradient(0, 0, this.width, this.height, 0xC0101010, 0xD0101010);
 
-        // Draw background texture
+        int drawLeft = guiLeft;
+        int drawTop = guiTop;
+
+        // Draw background texture (however you're doing it now — keep it)
         context.drawTexture(BACKGROUND_TEXTURE,
-                guiLeft, guiTop,
+                drawLeft, drawTop,
                 0, 0,
                 GUI_WIDTH, GUI_HEIGHT,
                 GUI_WIDTH, GUI_HEIGHT);
+
+        // Draw ALL text at screen coordinates, NOT inside a scaled matrix
+        // Use guiLeft + offset * SCALE for positioning
+        context.drawText(this.textRenderer, "Назва DVPF0",
+                drawLeft + 10 * SCALE + 4,
+                drawTop + 5 * SCALE + 4,
+                0x000000, false);
 
         // ===== INFO PARCHMENT: clan name, date, members, rank =====
         int infoX = guiLeft + INFO_X * SCALE + 4;
@@ -294,4 +304,17 @@ public class ClanManagementScreen extends Screen {
         }
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
+
+    @Override
+    public boolean shouldCloseOnEsc() {
+        return true; // keep this
+    }
+
+    // This is the key method — prevents the blur shader from being applied
+    @Override
+    public void applyBlur(float delta) {
+        // Do nothing — skip the blur shader entirely
+    }
 }
+
+
