@@ -10,12 +10,17 @@ loom {
     }
 }
 
-dependencies {
-    // Depend on SelectedCore
-    implementation project(path: ':selectedcore', configuration: 'namedElements')
+repositories {
+    maven { url "https://hub.spigotmc.org/nexus/content/repositories/snapshots/" }
+    maven { url 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+}
 
-    // SQLite — needed on dev classpath; production jar is bundled by selectedcore via include
+dependencies {
+    implementation project(path: ':selectedcore', configuration: 'namedElements')
     implementation "org.xerial:sqlite-jdbc:3.47.2.0"
+
+    compileOnly "org.spigotmc:spigot-api:1.21.1-R0.1-SNAPSHOT"
+    compileOnly 'me.clip:placeholderapi:2.11.6'
 }
 
 jar {

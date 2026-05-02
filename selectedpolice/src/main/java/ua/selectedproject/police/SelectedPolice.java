@@ -19,20 +19,11 @@ public class SelectedPolice implements ModInitializer, SelectedAddon {
     @Override
     public void onInitialize() {
         LOGGER.info("SelectedPolice initializing...");
-
-        // Register commands
         PoliceCommands.register();
-
-        // Register PVP/PVE damage and criminal events
         PvpEventHandler.register();
-
-        // Register bound player movement and prison zone protection
+        BindingHandler.register();
         PoliceEventHandler.register();
-
-        // Register prison zone selection mode (must come after PoliceEventHandler)
         PrisonSelectionHandler.register();
-
-        // Register as addon with SelectedCore
         AddonRegistry.register(this);
 
         LOGGER.info("SelectedPolice initialized!");

@@ -1,10 +1,7 @@
 package ua.selectedproject.police;
 
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
-import net.fabricmc.fabric.api.event.player.PlayerBlockBreakEvents;
-import net.fabricmc.fabric.api.event.player.UseBlockCallback;
-import net.fabricmc.fabric.api.event.player.UseEntityCallback;
-import net.fabricmc.fabric.api.event.player.UseItemCallback;
+import net.fabricmc.fabric.api.event.player.*;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.server.world.ServerWorld;
 import net.minecraft.text.Text;
@@ -67,9 +64,15 @@ public class PoliceEventHandler {
                     if (frozen == null) {
                         // Record current pos as frozen position
                         boundPositions.put(uuid, player.getPos());
-                    } else if (doDistanceCheck && player.squaredDistanceTo(frozen) > 0.25) {
-                        // Teleport back (every 10 ticks)
-                        player.requestTeleport(frozen.x, frozen.y, frozen.z);
+                    } else if (!status.isBound() && status.isLeashed()) {
+                        UUID lt = status.leashedTo();
+                        if (lt != null) {
+                            ServerPlayerEntity officer = server.getPlayerManager().getPlayer(lt);
+                            if (officer != null) {
+                                player.sendMessage(Text.literal(
+                                        "§c⛓ Вас веде §e" + officer.getName().getString()), true);
+                            }
+                        }
                     }
 
                     // Show remaining time on actionbar
@@ -108,7 +111,7 @@ public class PoliceEventHandler {
         UseItemCallback.EVENT.register((player, world, hand) -> {
             if (world.isClient()) return TypedActionResult.pass(player.getStackInHand(hand));
             PoliceDatabase db = PoliceDatabase.getInstance();
-            if (db != null && db.isBound(player.getUuid())) {
+            if (db != null && isRestrained(db, player.getUuid())) {
                 player.sendMessage(Text.literal("§cВи не можете використовувати предмети, поки зв'язані."), true);
                 return TypedActionResult.fail(player.getStackInHand(hand));
             }
@@ -122,7 +125,7 @@ public class PoliceEventHandler {
                 return ActionResult.PASS;
             }
             PoliceDatabase db = PoliceDatabase.getInstance();
-            if (db != null && db.isBound(player.getUuid())) {
+            if (db != null && isRestrained(db, player.getUuid())) {
                 return ActionResult.FAIL;
             }
             return ActionResult.PASS;
@@ -132,10 +135,35 @@ public class PoliceEventHandler {
         UseEntityCallback.EVENT.register((player, world, hand, entity, hitResult) -> {
             if (world.isClient()) return ActionResult.PASS;
             PoliceDatabase db = PoliceDatabase.getInstance();
-            if (db != null && db.isBound(player.getUuid())) {
+            if (db != null && isRestrained(db, player.getUuid())) {
                 return ActionResult.FAIL;
             }
             return ActionResult.PASS;
+        });
+
+        AttackBlockCallback.EVENT.register((player, world, hand, pos, dir) -> {
+            if (world.isClient()) return ActionResult.PASS;
+            PoliceDatabase db = PoliceDatabase.getInstance();
+            if (db != null && isRestrained(db, player.getUuid())) return ActionResult.FAIL;
+            return ActionResult.PASS;
+        });
+
+        AttackEntityCallback.EVENT.register((player, world, hand, entity, hit) -> {
+            if (world.isClient()) return ActionResult.PASS;
+            PoliceDatabase db = PoliceDatabase.getInstance();
+            if (db != null && isRestrained(db, player.getUuid())) return ActionResult.FAIL;
+            return ActionResult.PASS;
+        });
+
+        PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, be) -> {
+            if (!(world instanceof ServerWorld)) return true;
+            PoliceDatabase db = PoliceDatabase.getInstance();
+            if (db == null || !(player instanceof ServerPlayerEntity sp)) return true;
+            if (isRestrained(db, sp.getUuid())) {
+                sp.sendMessage(Text.literal("§cВи не можете руйнувати, поки прив'язані."), true);
+                return false;
+            }
+            return true;
         });
     }
 
@@ -157,5 +185,9 @@ public class PoliceEventHandler {
             }
             return true;
         });
+    }
+
+    private static boolean isRestrained(PoliceDatabase db, UUID uuid) {
+        return db.isBound(uuid) || db.isLeashed(uuid);
     }
 }

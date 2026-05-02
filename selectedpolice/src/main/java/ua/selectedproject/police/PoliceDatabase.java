@@ -30,6 +30,7 @@ public class PoliceDatabase {
         instance = new PoliceDatabase();
         instance.connect();
         instance.createTables();
+        instance.migrate();
     }
 
     private void connect() {
@@ -95,7 +96,10 @@ public class PoliceDatabase {
                     z1 INTEGER NOT NULL,
                     x2 INTEGER NOT NULL,
                     y2 INTEGER NOT NULL,
-                    z2 INTEGER NOT NULL
+                    z2 INTEGER NOT NULL,
+                    home_x REAL,
+                    home_y REAL,
+                    home_z REAL
                 )
             """);
 
@@ -440,13 +444,34 @@ public class PoliceDatabase {
         return 0;
     }
 
+    public boolean setZoneHome(int zoneId, double x, double y, double z) {
+        String sql = "UPDATE prison_zones SET home_x=?, home_y=?, home_z=? WHERE id=?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setDouble(1,x); ps.setDouble(2,y); ps.setDouble(3,z); ps.setInt(4,zoneId);
+            return ps.executeUpdate() > 0;
+        } catch (SQLException e) { LOGGER.error("setZoneHome failed", e); return false; }
+    }
+
+    public PrisonZone getZoneById(int id) {
+        try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM prison_zones WHERE id=?")) {
+            ps.setInt(1, id);
+            ResultSet rs = ps.executeQuery();
+            if (rs.next()) return zoneFromRs(rs);
+        } catch (SQLException e) { LOGGER.error("getZoneById failed", e); }
+        return null;
+    }
+
     private PrisonZone zoneFromRs(ResultSet rs) throws SQLException {
+        Double hx = rs.getObject("home_x") != null ? rs.getDouble("home_x") : null;
+        Double hy = rs.getObject("home_y") != null ? rs.getDouble("home_y") : null;
+        Double hz = rs.getObject("home_z") != null ? rs.getDouble("home_z") : null;
         return new PrisonZone(
                 rs.getInt("id"),
                 UUID.fromString(rs.getString("owner_uuid")),
                 rs.getString("world"),
                 rs.getInt("x1"), rs.getInt("y1"), rs.getInt("z1"),
-                rs.getInt("x2"), rs.getInt("y2"), rs.getInt("z2")
+                rs.getInt("x2"), rs.getInt("y2"), rs.getInt("z2"),
+                hx, hy, hz
         );
     }
 
@@ -458,6 +483,27 @@ public class PoliceDatabase {
             }
         } catch (SQLException e) {
             LOGGER.error("Failed to close police database", e);
+        }
+    }
+
+    private void migrate() {
+        try (Statement stmt = connection.createStatement();
+             ResultSet rs = stmt.executeQuery("PRAGMA table_info(prison_zones)")) {
+            boolean hasX=false, hasY=false, hasZ=false;
+            while (rs.next()) {
+                String c = rs.getString("name");
+                if ("home_x".equals(c)) hasX=true;
+                if ("home_y".equals(c)) hasY=true;
+                if ("home_z".equals(c)) hasZ=true;
+            }
+            try (Statement s = connection.createStatement()) {
+                if (!hasX) s.executeUpdate("ALTER TABLE prison_zones ADD COLUMN home_x REAL");
+                if (!hasY) s.executeUpdate("ALTER TABLE prison_zones ADD COLUMN home_y REAL");
+                if (!hasZ) s.executeUpdate("ALTER TABLE prison_zones ADD COLUMN home_z REAL");
+                if (!hasX || !hasY || !hasZ) LOGGER.info("Migrated prison_zones: added home_x/y/z");
+            }
+        } catch (SQLException e) {
+            LOGGER.error("Failed to migrate prison_zones", e);
         }
     }
 }

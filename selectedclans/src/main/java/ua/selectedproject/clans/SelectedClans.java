@@ -48,6 +48,8 @@ public class SelectedClans implements ModInitializer, SelectedAddon {
     @Override
     public void onServerReady(MinecraftServer server) {
         LOGGER.info("SelectedClans server systems ready");
+
+        ua.selectedproject.clans.placeholder.ClanPapiExpansion.register();
     }
 
     @Override

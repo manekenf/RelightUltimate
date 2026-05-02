@@ -29,8 +29,12 @@ public class PvpEventHandler {
     /** Players pending binding on next respawn: criminal UUID → officer UUID. */
     static final Map<UUID, UUID> pendingBind = new HashMap<>();
 
+    private static final java.util.Set<UUID> deferredTagApply =
+            java.util.Collections.synchronizedSet(new java.util.HashSet<>());
+
     public static void register() {
         registerJoinHandler();
+        registerDeferredTagApply();
         // Cancel PVE player damage from other players; track criminal logic
         ServerLivingEntityEvents.ALLOW_DAMAGE.register((entity, source, amount) -> {
             if (!(entity instanceof ServerPlayerEntity victim)) return true;
@@ -42,12 +46,6 @@ public class PvpEventHandler {
 
             PoliceDatabase db = PoliceDatabase.getInstance();
             if (db == null) return true;
-
-            // Police officer hitting a bound player → leash/unleash logic (no damage)
-            if (db.isPolice(attacker.getUuid()) && db.isBound(victim.getUuid())) {
-                handleOfficerHitsBound(attacker, victim, db);
-                return false;
-            }
 
             // PVE protection
             if (!db.isPvp(victim.getUuid())) {
@@ -87,6 +85,8 @@ public class PvpEventHandler {
 
             PoliceDatabase db = PoliceDatabase.getInstance();
             if (db == null) return;
+
+            deferredTagApply.add(uuid);
 
             Instant boundUntil = Instant.now().plusSeconds(15 * 60);
             db.setBound(uuid, true, boundUntil, officerUuid);
@@ -132,22 +132,6 @@ public class PvpEventHandler {
         }
     }
 
-    private static void handleOfficerHitsBound(ServerPlayerEntity officer, ServerPlayerEntity criminal, PoliceDatabase db) {
-        UUID crimId = criminal.getUuid();
-        if (db.isLeashed(crimId)) {
-            // Second hit: unleash but keep caught
-            db.setLeashed(crimId, false, null);
-            db.setCaught(crimId, true, officer.getUuid());
-            officer.sendMessage(Text.literal("§e" + criminal.getName().getString() + " §aрозв'язаний і утримується під вартою."));
-            criminal.sendMessage(Text.literal("§eВас узяли під варту."));
-        } else {
-            // First hit: leash them
-            db.setLeashed(crimId, true, officer.getUuid());
-            officer.sendMessage(Text.literal("§e" + criminal.getName().getString() + " §aприкований до вас (6 блоків)."));
-            criminal.sendMessage(Text.literal("§cВас прикували до офіцера."));
-        }
-    }
-
     /** Apply or remove the criminal scoreboard team tag (shows red prefix above head). */
     public static void applyCriminalTag(ServerPlayerEntity player, boolean isCriminal) {
         MinecraftServer server = player.getServer();
@@ -163,6 +147,10 @@ public class PvpEventHandler {
 
         String playerName = player.getNameForScoreboard();
         if (isCriminal) {
+            Team existing = scoreboard.getScoreHolderTeam(playerName);
+            if (existing != null && existing != team) {
+                scoreboard.removeScoreHolderFromTeam(playerName, existing);
+            }
             scoreboard.addScoreHolderToTeam(playerName, team);
         } else {
             scoreboard.removeScoreHolderFromTeam(playerName, team);
@@ -203,6 +191,12 @@ public class PvpEventHandler {
         if (db != null && db.isCriminal(player.getUuid())) return;
 
         String playerName = player.getNameForScoreboard();
+        Team target = isPvp ? pvpTeam : pveTeam;
+        Team existing = scoreboard.getScoreHolderTeam(playerName);
+        if (existing != null && existing != target) {
+            scoreboard.removeScoreHolderFromTeam(playerName, existing);
+        }
+        scoreboard.addScoreHolderToTeam(playerName, target);
         scoreboard.addScoreHolderToTeam(playerName, isPvp ? pvpTeam : pveTeam);
     }
 
@@ -220,14 +214,25 @@ public class PvpEventHandler {
     }
 
     private static void registerJoinHandler() {
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
-            ServerPlayerEntity player = handler.player;
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
+                deferredTagApply.add(handler.player.getUuid()));
+    }
+
+    private static void registerDeferredTagApply() {
+        net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
+            if (deferredTagApply.isEmpty()) return;
             PoliceDatabase db = PoliceDatabase.getInstance();
-            if (db == null) return;
-            if (db.isCriminal(player.getUuid())) {
-                applyCriminalTag(player, true);
-            } else {
-                applyPvpTeam(player, db.isPvp(player.getUuid()));
+            if (db == null) { deferredTagApply.clear(); return; }
+            java.util.Set<UUID> snap;
+            synchronized (deferredTagApply) {
+                snap = new java.util.HashSet<>(deferredTagApply);
+                deferredTagApply.clear();
+            }
+            for (UUID uuid : snap) {
+                ServerPlayerEntity p = server.getPlayerManager().getPlayer(uuid);
+                if (p == null) continue;
+                if (db.isCriminal(uuid)) applyCriminalTag(p, true);
+                else applyPvpTeam(p, db.isPvp(uuid));
             }
         });
     }

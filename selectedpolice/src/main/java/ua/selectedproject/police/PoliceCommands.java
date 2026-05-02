@@ -1,6 +1,7 @@
 package ua.selectedproject.police;
 
 import com.mojang.brigadier.CommandDispatcher;
+import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.minecraft.command.CommandRegistryAccess;
@@ -56,13 +57,23 @@ public class PoliceCommands {
 
     private static int handlePvpToggle(ServerCommandSource source, boolean wantPvp) {
         ServerPlayerEntity player;
-        try { player = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        try {
+            player = source.getPlayerOrThrow();
+        } catch (Exception e) {
+            return 0;
+        }
 
         PoliceDatabase db = PoliceDatabase.getInstance();
-        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+        if (db == null) {
+            source.sendError(Text.literal("§cСистема недоступна."));
+            return 0;
+        }
 
         PlayerPvpStatus status = db.getPvpStatus(player.getUuid());
-        if (status == null) { source.sendError(Text.literal("§cПомилка бази даних.")); return 0; }
+        if (status == null) {
+            source.sendError(Text.literal("§cПомилка бази даних."));
+            return 0;
+        }
 
         if (status.isPvp() == wantPvp) {
             String mode = wantPvp ? "PVP" : "PVE";
@@ -99,11 +110,27 @@ public class PoliceCommands {
                 .requires(source -> {
                     try {
                         return source.getPlayerOrThrow() != null;
-                    } catch (Exception e) { return false; }
+                    } catch (Exception e) {
+                        return false;
+                    }
                 })
                 .then(literal("on").executes(ctx -> handlePoliceOn(ctx.getSource())))
                 .then(literal("off").executes(ctx -> handlePoliceOff(ctx.getSource())))
                 .then(literal("prison")
+                        .then(literal("home")
+                                .then(argument("zoneId", IntegerArgumentType.integer(1))
+                                        .executes(ctx -> handlePrisonHome(ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "zoneId")))))
+                        .then(literal("jail")
+                                .then(argument("nick", StringArgumentType.word())
+                                        .executes(ctx -> handlePrisonJail(ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "nick"), 15))
+                                        .then(argument("minutes", IntegerArgumentType.integer(1, 60))
+                                                .executes(ctx -> handlePrisonJail(ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "nick"),
+                                                        IntegerArgumentType.getInteger(ctx, "minutes"))))))
+                        .then(literal("list")
+                                .executes(ctx -> handlePrisonList(ctx.getSource())))
                         .then(literal("set")
                                 .executes(ctx -> handlePrisonSetMode(ctx.getSource())))
                         .then(literal("clean")
@@ -125,10 +152,17 @@ public class PoliceCommands {
 
     private static int handlePoliceOn(ServerCommandSource source) {
         ServerPlayerEntity player;
-        try { player = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        try {
+            player = source.getPlayerOrThrow();
+        } catch (Exception e) {
+            return 0;
+        }
 
         PoliceDatabase db = PoliceDatabase.getInstance();
-        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+        if (db == null) {
+            source.sendError(Text.literal("§cСистема недоступна."));
+            return 0;
+        }
 
         if (!db.isPvp(player.getUuid())) {
             player.sendMessage(Text.literal("§cПоліцейські можуть бути тільки гравці з увімкненим PVP."));
@@ -146,10 +180,17 @@ public class PoliceCommands {
 
     private static int handlePoliceOff(ServerCommandSource source) {
         ServerPlayerEntity player;
-        try { player = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        try {
+            player = source.getPlayerOrThrow();
+        } catch (Exception e) {
+            return 0;
+        }
 
         PoliceDatabase db = PoliceDatabase.getInstance();
-        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+        if (db == null) {
+            source.sendError(Text.literal("§cСистема недоступна."));
+            return 0;
+        }
 
         if (!db.isPolice(player.getUuid())) {
             player.sendMessage(Text.literal("§7Ви не є поліцейським."));
@@ -163,10 +204,17 @@ public class PoliceCommands {
 
     private static int handlePrisonSetMode(ServerCommandSource source) {
         ServerPlayerEntity player;
-        try { player = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        try {
+            player = source.getPlayerOrThrow();
+        } catch (Exception e) {
+            return 0;
+        }
 
         PoliceDatabase db = PoliceDatabase.getInstance();
-        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+        if (db == null) {
+            source.sendError(Text.literal("§cСистема недоступна."));
+            return 0;
+        }
 
         if (!db.isPolice(player.getUuid())) {
             player.sendMessage(Text.literal("§cТільки поліцейські можуть створювати зони в'язниці."));
@@ -185,10 +233,17 @@ public class PoliceCommands {
 
     private static int handlePoliceSpawn(ServerCommandSource source, String nick) {
         ServerPlayerEntity officer;
-        try { officer = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        try {
+            officer = source.getPlayerOrThrow();
+        } catch (Exception e) {
+            return 0;
+        }
 
         PoliceDatabase db = PoliceDatabase.getInstance();
-        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+        if (db == null) {
+            source.sendError(Text.literal("§cСистема недоступна."));
+            return 0;
+        }
 
         if (!db.isPolice(officer.getUuid())) {
             officer.sendMessage(Text.literal("§cТільки поліцейські можуть встановлювати місця появи."));
@@ -219,10 +274,17 @@ public class PoliceCommands {
 
     private static int handlePoliceRelease(ServerCommandSource source, String nick) {
         ServerPlayerEntity officer;
-        try { officer = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        try {
+            officer = source.getPlayerOrThrow();
+        } catch (Exception e) {
+            return 0;
+        }
 
         PoliceDatabase db = PoliceDatabase.getInstance();
-        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+        if (db == null) {
+            source.sendError(Text.literal("§cСистема недоступна."));
+            return 0;
+        }
 
         if (!db.isPolice(officer.getUuid())) {
             officer.sendMessage(Text.literal("§cТільки поліцейські можуть звільняти гравців."));
@@ -246,10 +308,17 @@ public class PoliceCommands {
 
     private static int handlePoliceClean(ServerCommandSource source) {
         ServerPlayerEntity player;
-        try { player = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        try {
+            player = source.getPlayerOrThrow();
+        } catch (Exception e) {
+            return 0;
+        }
 
         PoliceDatabase db = PoliceDatabase.getInstance();
-        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+        if (db == null) {
+            source.sendError(Text.literal("§cСистема недоступна."));
+            return 0;
+        }
 
         List<PrisonZone> zones = db.getPrisonZonesByOwner(player.getUuid());
         if (zones.isEmpty()) {
@@ -263,6 +332,101 @@ public class PoliceCommands {
         } else {
             source.sendError(Text.literal("§cПомилка видалення зони."));
             return 0;
+        }
+        return 1;
+    }
+
+    private static int handlePrisonHome(ServerCommandSource source, int zoneId) {
+        ServerPlayerEntity officer;
+        try { officer = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        PoliceDatabase db = PoliceDatabase.getInstance();
+        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+
+        PrisonZone zone = db.getZoneById(zoneId);
+        if (zone == null) {
+            officer.sendMessage(Text.literal("§cЗона #" + zoneId + " не знайдена."));
+            return 0;
+        }
+        if (!zone.ownerUuid().equals(officer.getUuid())) {
+            officer.sendMessage(Text.literal("§cЦе не ваша зона."));
+            return 0;
+        }
+        String world = officer.getServerWorld().getRegistryKey().getValue().toString();
+        if (!world.equals(zone.world())) {
+            officer.sendMessage(Text.literal("§cВи в іншому світі.")); return 0;
+        }
+        if (!zone.contains(world, officer.getX(), officer.getY(), officer.getZ())) {
+            officer.sendMessage(Text.literal("§cСтаньте всередині зони #" + zoneId + ".")); return 0;
+        }
+        if (db.setZoneHome(zoneId, officer.getX(), officer.getY(), officer.getZ())) {
+            officer.sendMessage(Text.literal(String.format(
+                    "§aТочку появи зони #%d встановлено: §f%.2f, %.2f, %.2f",
+                    zoneId, officer.getX(), officer.getY(), officer.getZ())));
+            return 1;
+        }
+        return 0;
+    }
+
+    private static int handlePrisonJail(ServerCommandSource source, String nick, int minutes) {
+        ServerPlayerEntity officer;
+        try { officer = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        PoliceDatabase db = PoliceDatabase.getInstance();
+        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+        if (!db.isPolice(officer.getUuid())) {
+            officer.sendMessage(Text.literal("§cТільки поліцейські.")); return 0;
+        }
+        ServerPlayerEntity target = source.getServer().getPlayerManager().getPlayer(nick);
+        if (target == null) { source.sendError(Text.literal("§c" + nick + " не в мережі.")); return 0; }
+        UUID tu = target.getUuid();
+        if (!db.isCaught(tu) && !db.isLeashed(tu)) {
+            source.sendError(Text.literal("§c" + nick + " не під вартою. Спершу прив'яжіть.")); return 0;
+        }
+
+        List<PrisonZone> zones = db.getPrisonZonesByOwner(officer.getUuid());
+        PrisonZone chosen = null;
+        for (PrisonZone z : zones) if (z.homeX() != null) { chosen = z; break; }
+        if (chosen == null && !zones.isEmpty()) chosen = zones.get(0);
+        if (chosen == null) {
+            officer.sendMessage(Text.literal("§cУ вас немає зон. /police prison set")); return 0;
+        }
+
+        net.minecraft.util.Identifier wid = net.minecraft.util.Identifier.tryParse(chosen.world());
+        if (wid == null) { source.sendError(Text.literal("§cНевалідний світ зони.")); return 0; }
+        net.minecraft.server.world.ServerWorld world = source.getServer().getWorld(
+                net.minecraft.registry.RegistryKey.of(net.minecraft.registry.RegistryKeys.WORLD, wid));
+        if (world == null) { source.sendError(Text.literal("§cСвіт не знайдено.")); return 0; }
+
+        target.teleport(world, chosen.targetX(), chosen.targetY(), chosen.targetZ(),
+                java.util.EnumSet.noneOf(net.minecraft.network.packet.s2c.play.PositionFlag.class),
+                target.getYaw(), target.getPitch());
+
+        Instant boundUntil = Instant.now().plusSeconds(minutes * 60L);
+        db.setBound(tu, true, boundUntil, officer.getUuid());
+        db.setLeashed(tu, false, null);
+        db.setCaught(tu, true, officer.getUuid());
+        db.setPrisonSpawn(tu, chosen.world(), chosen.targetX(), chosen.targetY(), chosen.targetZ());
+        PoliceEventHandler.storeBoundPosition(tu,
+                new net.minecraft.util.math.Vec3d(chosen.targetX(), chosen.targetY(), chosen.targetZ()));
+
+        officer.sendMessage(Text.literal(String.format(
+                "§a⚖ %s засуджено на %d хв (зона #%d)", nick, minutes, chosen.id())));
+        target.sendMessage(Text.literal(String.format("§c⛓ Засуджено на %d хв.", minutes)));
+        return 1;
+    }
+
+    private static int handlePrisonList(ServerCommandSource source) {
+        ServerPlayerEntity p;
+        try { p = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        PoliceDatabase db = PoliceDatabase.getInstance();
+        if (db == null) return 0;
+        List<PrisonZone> zones = db.getPrisonZonesByOwner(p.getUuid());
+        if (zones.isEmpty()) { p.sendMessage(Text.literal("§7У вас немає зон.")); return 0; }
+        p.sendMessage(Text.literal("§a=== Ваші зони ==="));
+        for (PrisonZone z : zones) {
+            String h = z.homeX() != null
+                    ? String.format(" §a(home %.0f,%.0f,%.0f)", z.homeX(), z.homeY(), z.homeZ())
+                    : " §c(home не задано)";
+            p.sendMessage(Text.literal(String.format("§f#%d §7v=%d%s", z.id(), z.volume(), h)));
         }
         return 1;
     }
@@ -291,7 +455,10 @@ public class PoliceCommands {
         }
 
         PoliceDatabase db = PoliceDatabase.getInstance();
-        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+        if (db == null) {
+            source.sendError(Text.literal("§cСистема недоступна."));
+            return 0;
+        }
 
         db.releaseFromCustody(targetUuid);
         db.setCriminal(targetUuid, false);
