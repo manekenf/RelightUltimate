@@ -11,7 +11,6 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import ua.selectedproject.police.data.PlayerPvpStatus;
 import ua.selectedproject.police.data.PrisonZone;
-import ua.selectedproject.police.placeholder.PapiExpansion;
 
 import java.time.Instant;
 import java.util.List;
@@ -94,7 +93,6 @@ public class PoliceCommands {
 
         db.setPvp(player.getUuid(), wantPvp);
         PvpEventHandler.applyPvpTeam(player, wantPvp);
-        PapiExpansion.notifyChange(player.getUuid());
 
         if (wantPvp) {
             player.sendMessage(Text.literal("§c⚔ Ви увійшли в режим PVP. Ви можете бути атаковані!"));
@@ -525,7 +523,6 @@ public class PoliceCommands {
         // If you want admin overrides to NOT touch the cooldown timer, see the alternative below.
         db.setPvpKeepCooldown(target.getUuid(), wantPvp);
         PvpEventHandler.applyPvpTeam(target, wantPvp);
-        PapiExpansion.notifyChange(target.getUuid());
 
         if (wantPvp) {
             target.sendMessage(Text.literal("§c⚔ Адмін перевів вас у режим PVP."));

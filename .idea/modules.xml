@@ -2,6 +2,9 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/papibridge/selectedproject.papibridge.client.iml" filepath="$PROJECT_DIR$/.idea/modules/papibridge/selectedproject.papibridge.client.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/papibridge/selectedproject.papibridge.main.iml" filepath="$PROJECT_DIR$/.idea/modules/papibridge/selectedproject.papibridge.main.iml" />
+      <module fileurl="file://$PROJECT_DIR$/.idea/modules/papibridge/selectedproject.papibridge.test.iml" filepath="$PROJECT_DIR$/.idea/modules/papibridge/selectedproject.papibridge.test.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.client.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.client.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.main.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.main.iml" />
       <module fileurl="file://$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.test.iml" filepath="$PROJECT_DIR$/.idea/modules/selectedclans/selectedproject.selectedclans.test.iml" />

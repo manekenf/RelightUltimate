@@ -1,18 +1,41 @@
 plugins {
     id 'fabric-loom' version '1.9-SNAPSHOT' apply false
+    id 'com.gradleup.shadow' version '8.3.5' apply false
 }
 
 subprojects {
-    apply plugin: 'fabric-loom'
-    apply plugin: 'maven-publish'
-
     group = project.maven_group
 
     repositories {
         mavenCentral()
-        maven { url "https://maven.fabricmc.net/" }
-        maven { url "https://m2.dv8tion.net/releases" }
-        maven { url "https://repo.papermc.io/repository/maven-public/" }
+    }
+
+    // The `java` extension only exists once a project applies the `java` plugin
+    // (or any plugin that includes it, like fabric-loom or application). Configure
+    // it lazily via plugins.withId so it works for both Fabric subprojects and
+    // for papibridge (which applies java directly).
+    plugins.withId('java') {
+        java {
+            sourceCompatibility = JavaVersion.VERSION_21
+            targetCompatibility = JavaVersion.VERSION_21
+            withSourcesJar()
+        }
+        tasks.withType(JavaCompile).configureEach {
+            options.encoding = 'UTF-8'
+            options.release = 21
+        }
+    }
+}
+
+// Fabric-specific config — applies only to the three Fabric subprojects.
+configure(subprojects.findAll { it.name in ['selectedcore', 'selectedclans', 'selectedpolice'] }) {
+    apply plugin: 'fabric-loom'
+    apply plugin: 'maven-publish'
+
+    repositories {
+        maven { url 'https://maven.fabricmc.net/' }
+        maven { url 'https://m2.dv8tion.net/releases' }
+        maven { url 'https://repo.papermc.io/repository/maven-public/' }
     }
 
     dependencies {
@@ -22,23 +45,11 @@ subprojects {
         modImplementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_version}"
     }
 
-    def targetJavaVersion = 21
-    java {
-        withSourcesJar()
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
-    }
-
-    tasks.withType(JavaCompile).configureEach {
-        it.options.encoding = "UTF-8"
-        it.options.release = targetJavaVersion
-    }
-
     processResources {
-        inputs.property "version", project.version
-        filteringCharset "UTF-8"
-        filesMatching("fabric.mod.json") {
-            expand "version": project.version
+        inputs.property 'version', project.version
+        filteringCharset 'UTF-8'
+        filesMatching('fabric.mod.json') {
+            expand 'version': project.version
         }
     }
 

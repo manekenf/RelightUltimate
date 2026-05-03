@@ -7,7 +7,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ua.selectedproject.core.api.AddonRegistry;
 import ua.selectedproject.core.api.SelectedAddon;
-import ua.selectedproject.police.placeholder.PapiExpansion;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import ua.selectedproject.police.network.BindingSyncPayload;
 
@@ -42,7 +41,6 @@ public class SelectedPolice implements ModInitializer, SelectedAddon {
         LOGGER.info("SelectedPolice server systems ready — initializing database");
         PoliceDatabase.init();
         PvpEventHandler.restoreCriminalTags(server);
-        PapiExpansion.register();
     }
 
     @Override

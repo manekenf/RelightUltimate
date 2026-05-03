@@ -1,0 +1,8 @@
+name: RelightPapiBridge
+version: ${version}
+main: ua.selectedproject.papibridge.RelightPapiBridge
+api-version: '1.21'
+author: SelectedProject
+description: Bridges SelectedClans/SelectedPolice state from the Fabric mods into PlaceholderAPI.
+depend: [PlaceholderAPI]
+load: POSTWORLD

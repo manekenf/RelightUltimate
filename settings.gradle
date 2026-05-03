@@ -11,3 +11,4 @@ rootProject.name = "selectedproject"
 include 'selectedcore'
 include 'selectedclans'
 include 'selectedpolice'
+include 'papibridge'

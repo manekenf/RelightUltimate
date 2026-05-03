@@ -1,0 +1,36 @@
+plugins {
+    id 'java'
+    id 'com.gradleup.shadow'
+}
+
+version = '1.0.0'
+base { archivesName = 'relight-papi-bridge' }
+
+repositories {
+    mavenCentral()
+    maven { url 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/' }
+    maven { url 'https://repo.extendedclip.com/content/repositories/placeholderapi/' }
+    maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+}
+
+dependencies {
+    compileOnly 'org.spigotmc:spigot-api:1.21.1-R0.1-SNAPSHOT'
+    compileOnly 'me.clip:placeholderapi:2.11.6'
+    implementation 'org.xerial:sqlite-jdbc:3.47.2.0'
+}
+
+shadowJar {
+    archiveClassifier.set('')
+    relocate 'org.sqlite', 'ua.selectedproject.papibridge.libs.sqlite'
+}
+
+build.dependsOn shadowJar
+jar.enabled = false
+
+processResources {
+    inputs.property 'version', project.version
+    filteringCharset 'UTF-8'
+    filesMatching('plugin.yml') {
+        expand 'version': project.version
+    }
+}

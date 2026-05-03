@@ -14,6 +14,18 @@ import ua.selectedproject.core.config.CoreLocalization;
 import ua.selectedproject.core.data.Clan;
 import ua.selectedproject.core.data.DatabaseManager;
 
+/**
+ * Builds chat messages with the format:
+ *     [ClanTag] [TeamPrefix]<Nick>: message
+ * <p>
+ * The team prefix (PVP/PVE icon, criminal label, police label) comes from the player's
+ * scoreboard team — that team is set by SelectedPolice and the prefix may be either
+ * a unicode icon glyph or a plain text label, depending on what icons are available.
+ * <p>
+ * We bypass {@link ServerMessageEvents#ALLOW_CHAT_MESSAGE} default broadcast and
+ * re-broadcast a fully-formatted line ourselves, so the clan tag and team prefix
+ * appear <i>before</i> the {@code <Nick>} block (vanilla puts the name first).
+ */
 public final class ChatEventHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedClans/Chat");
 
@@ -42,6 +54,7 @@ public final class ChatEventHandler {
 
         MutableText line = Text.empty();
 
+        // 1. Clan tag (clickable, hoverable) — first
         if (clan != null) {
             CoreConfig config = CoreConfig.getInstance();
             String tagText = String.format(config.clanTagFormat, clan.getTag());
@@ -54,6 +67,7 @@ public final class ChatEventHandler {
             line.append(clanTag);
         }
 
+        // 2. Scoreboard team prefix (PVP/PVE icon, criminal/police label) — second
         Team team = sender.getScoreboardTeam();
         if (team != null) {
             Text teamPrefix = team.getPrefix();
@@ -62,21 +76,27 @@ public final class ChatEventHandler {
             }
         }
 
+        // 3. Plain nick inside <> — vanilla style, but without team prefix duplication
         line.append(Text.literal("<"));
         line.append(Text.literal(sender.getGameProfile().getName()));
         line.append(Text.literal("> "));
+
+        // 4. Message body
         line.append(message.getContent());
+
         return line;
     }
 
     private static Text buildClanHoverText(Clan clan, DatabaseManager db) {
         CoreLocalization lang = CoreLocalization.getInstance();
         int memberCount = db.getMemberCount(clan.getId());
+
         MutableText hover = Text.empty();
         hover.append(Text.literal(lang.get("clan.info.header", clan.getName(), clan.getTag()) + "\n"));
         hover.append(Text.literal(lang.get("clan.info.created",
                 clan.getCreatedAt().toString().substring(0, 10)) + "\n"));
         hover.append(Text.literal(lang.get("clan.info.members", memberCount)));
+
         if (clan.getShopNumber() != null) {
             hover.append(Text.literal("\n" + lang.get("clan.info.shop", clan.getShopNumber())));
         }

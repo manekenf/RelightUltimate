@@ -1,0 +1,18 @@
+{
+  "providers": [
+    {
+      "type": "bitmap",
+      "file": "selectedpolice:icons/pvp.png",
+      "ascent": 13,
+      "height": 16,
+      "chars": ["\uE102"]
+    },
+    {
+      "type": "bitmap",
+      "file": "selectedpolice:icons/pve.png",
+      "ascent": 13,
+      "height": 16,
+      "chars": ["\uE103"]
+    }
+  ]
+}

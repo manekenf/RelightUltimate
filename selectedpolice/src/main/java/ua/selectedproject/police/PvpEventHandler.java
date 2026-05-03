@@ -146,11 +146,9 @@ public class PvpEventHandler {
 
         Scoreboard scoreboard = server.getScoreboard();
         Team team = scoreboard.getTeam("sp_criminal");
-        if (team == null) {
-            team = scoreboard.addTeam("sp_criminal");
-            team.setPrefix(Text.literal("§c[злочинець] "));
-            team.setColor(Formatting.RED);
-        }
+        if (team == null) team = scoreboard.addTeam("sp_criminal");
+        team.setPrefix(Text.literal("§c[злочинець] "));   // tmp text
+        team.setColor(Formatting.RED);
 
         String playerName = player.getNameForScoreboard();
         if (isCriminal) {
@@ -160,8 +158,10 @@ public class PvpEventHandler {
             }
             scoreboard.addScoreHolderToTeam(playerName, team);
         } else {
-            scoreboard.removeScoreHolderFromTeam(playerName, team);
-            // Re-assign to pve/pvp team now that criminal tag is gone
+            Team existing = scoreboard.getScoreHolderTeam(playerName);
+            if (existing == team) {
+                scoreboard.removeScoreHolderFromTeam(playerName, team);
+            }
             PoliceDatabase db = PoliceDatabase.getInstance();
             if (db != null) {
                 applyPvpTeam(player, db.isPvp(player.getUuid()));
@@ -179,32 +179,37 @@ public class PvpEventHandler {
 
         Scoreboard scoreboard = server.getScoreboard();
 
+        // Always update prefix in case it changed (e.g. after icon swap during dev).
         Team pveTeam = scoreboard.getTeam("sp_pve");
-        if (pveTeam == null) {
-            pveTeam = scoreboard.addTeam("sp_pve");
-            pveTeam.setPrefix(Text.literal("§a[PVE] "));
-            pveTeam.setColor(Formatting.GREEN);
-        }
+        if (pveTeam == null) pveTeam = scoreboard.addTeam("sp_pve");
+        pveTeam.setPrefix(Text.literal("\uE103 "));   // pve icon
+        pveTeam.setColor(Formatting.GREEN);
 
         Team pvpTeam = scoreboard.getTeam("sp_pvp");
-        if (pvpTeam == null) {
-            pvpTeam = scoreboard.addTeam("sp_pvp");
-            pvpTeam.setPrefix(Text.literal("§c[PVP] "));
-            pvpTeam.setColor(Formatting.RED);
-        }
+        if (pvpTeam == null) pvpTeam = scoreboard.addTeam("sp_pvp");
+        pvpTeam.setPrefix(Text.literal("\uE102 "));   // pvp icon
+        pvpTeam.setColor(Formatting.RED);
 
-        // Don't override the criminal tag
+        Team policeTeam = scoreboard.getTeam("sp_police");
+        if (policeTeam == null) policeTeam = scoreboard.addTeam("sp_police");
+        policeTeam.setPrefix(Text.literal("§b[поліція] "));   // tmp text
+        policeTeam.setColor(Formatting.AQUA);
+
         PoliceDatabase db = PoliceDatabase.getInstance();
-        if (db != null && db.isCriminal(player.getUuid())) return;
+        if (db == null) return;
+        if (db.isCriminal(player.getUuid())) return;
+
+        Team target;
+        if (db.isPolice(player.getUuid())) target = policeTeam;
+        else if (isPvp) target = pvpTeam;
+        else target = pveTeam;
 
         String playerName = player.getNameForScoreboard();
-        Team target = isPvp ? pvpTeam : pveTeam;
         Team existing = scoreboard.getScoreHolderTeam(playerName);
         if (existing != null && existing != target) {
             scoreboard.removeScoreHolderFromTeam(playerName, existing);
         }
         scoreboard.addScoreHolderToTeam(playerName, target);
-        scoreboard.addScoreHolderToTeam(playerName, isPvp ? pvpTeam : pveTeam);
     }
 
     /**
