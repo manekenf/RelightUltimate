@@ -13,6 +13,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.Formatting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ua.selectedproject.police.network.BindingNetworking;
 
 import java.time.Instant;
 import java.util.*;
@@ -23,10 +24,14 @@ import java.util.*;
 public class PvpEventHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedPolice/PvpEvents");
 
-    /** Tracks recent attacks on PVE players: attacker UUID → list of epoch seconds. */
+    /**
+     * Tracks recent attacks on PVE players: attacker UUID → list of epoch seconds.
+     */
     private static final Map<UUID, List<Long>> attackTimestamps = new HashMap<>();
 
-    /** Players pending binding on next respawn: criminal UUID → officer UUID. */
+    /**
+     * Players pending binding on next respawn: criminal UUID → officer UUID.
+     */
     static final Map<UUID, UUID> pendingBind = new HashMap<>();
 
     private static final java.util.Set<UUID> deferredTagApply =
@@ -73,7 +78,7 @@ public class PvpEventHandler {
             pendingBind.put(criminal.getUuid(), officer.getUuid());
             officer.sendMessage(Text.literal(
                     "§a⚖ Злочинець §e" + criminal.getName().getString() +
-                    "§a вбитий. Очікуйте сповіщення про місце появи."));
+                            "§a вбитий. Очікуйте сповіщення про місце появи."));
             LOGGER.info("Officer {} killed criminal {}", officer.getName().getString(), criminal.getName().getString());
         });
 
@@ -132,7 +137,9 @@ public class PvpEventHandler {
         }
     }
 
-    /** Apply or remove the criminal scoreboard team tag (shows red prefix above head). */
+    /**
+     * Apply or remove the criminal scoreboard team tag (shows red prefix above head).
+     */
     public static void applyCriminalTag(ServerPlayerEntity player, boolean isCriminal) {
         MinecraftServer server = player.getServer();
         if (server == null) return;
@@ -200,7 +207,9 @@ public class PvpEventHandler {
         scoreboard.addScoreHolderToTeam(playerName, isPvp ? pvpTeam : pveTeam);
     }
 
-    /** Restore criminal tags and assign pve/pvp teams on server ready. */
+    /**
+     * Restore criminal tags and assign pve/pvp teams on server ready.
+     */
     public static void restoreCriminalTags(MinecraftServer server) {
         PoliceDatabase db = PoliceDatabase.getInstance();
         if (db == null) return;
@@ -214,15 +223,21 @@ public class PvpEventHandler {
     }
 
     private static void registerJoinHandler() {
-        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) ->
-                deferredTagApply.add(handler.player.getUuid()));
+        ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
+            deferredTagApply.add(handler.player.getUuid());
+            ServerPlayerEntity p = handler.player;
+            server.execute(() -> BindingNetworking.syncAllToPlayer(p));
+        });
     }
 
     private static void registerDeferredTagApply() {
         net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents.END_SERVER_TICK.register(server -> {
             if (deferredTagApply.isEmpty()) return;
             PoliceDatabase db = PoliceDatabase.getInstance();
-            if (db == null) { deferredTagApply.clear(); return; }
+            if (db == null) {
+                deferredTagApply.clear();
+                return;
+            }
             java.util.Set<UUID> snap;
             synchronized (deferredTagApply) {
                 snap = new java.util.HashSet<>(deferredTagApply);

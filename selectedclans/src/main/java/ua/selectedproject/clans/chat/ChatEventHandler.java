@@ -2,6 +2,7 @@ package ua.selectedproject.clans.chat;
 
 import net.fabricmc.fabric.api.message.v1.ServerMessageEvents;
 import net.minecraft.network.message.SignedMessage;
+import net.minecraft.scoreboard.Team;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.PlayerManager;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -53,8 +54,16 @@ public final class ChatEventHandler {
             line.append(clanTag);
         }
 
+        Team team = sender.getScoreboardTeam();
+        if (team != null) {
+            Text teamPrefix = team.getPrefix();
+            if (teamPrefix != null && !teamPrefix.getString().isEmpty()) {
+                line.append(teamPrefix);
+            }
+        }
+
         line.append(Text.literal("<"));
-        line.append(sender.getDisplayName());     // включає team-prefix [PVE]/[PVP]/[злочинець]
+        line.append(Text.literal(sender.getGameProfile().getName()));
         line.append(Text.literal("> "));
         line.append(message.getContent());
         return line;

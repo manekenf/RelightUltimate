@@ -36,6 +36,7 @@ public class PoliceCommands {
         registerPvpCommand(dispatcher);
         registerPoliceCommand(dispatcher);
         registerAPoliceCommand(dispatcher);
+        registerAPvpCommand(dispatcher);
     }
 
     // ==================== /pvp ====================
@@ -468,4 +469,73 @@ public class PoliceCommands {
         source.sendFeedback(() -> Text.literal("§aГравця §e" + nick + "§a звільнено з-під варти."), true);
         return 1;
     }
+    // ==================== /apvp ====================
+
+    private static void registerAPvpCommand(CommandDispatcher<ServerCommandSource> dispatcher) {
+        dispatcher.register(literal("apvp")
+                .requires(src -> src.hasPermissionLevel(2))
+                .then(argument("nick", StringArgumentType.word())
+                        .then(literal("on")
+                                .executes(ctx -> handleAdminPvpToggle(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "nick"), true)))
+                        .then(literal("off")
+                                .executes(ctx -> handleAdminPvpToggle(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "nick"), false)))
+                        .executes(ctx -> handleAdminPvpQuery(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "nick"))))
+        );
+    }
+
+    /** /apvp <nick> — show current PVP state for that player. */
+    private static int handleAdminPvpQuery(ServerCommandSource source, String nick) {
+        PoliceDatabase db = PoliceDatabase.getInstance();
+        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+
+        ServerPlayerEntity target = source.getServer().getPlayerManager().getPlayer(nick);
+        if (target == null) {
+            source.sendError(Text.literal("§c" + nick + " не в мережі."));
+            return 0;
+        }
+        boolean pvp = db.isPvp(target.getUuid());
+        source.sendFeedback(() -> Text.literal(String.format(
+                "§7Режим §e%s§7: %s", nick, pvp ? "§cPVP ⚔" : "§aPVE 🛡")), false);
+        return 1;
+    }
+
+    /** /apvp <nick> on|off — admin override, ignores cooldown. */
+    private static int handleAdminPvpToggle(ServerCommandSource source, String nick, boolean wantPvp) {
+        PoliceDatabase db = PoliceDatabase.getInstance();
+        if (db == null) { source.sendError(Text.literal("§cСистема недоступна.")); return 0; }
+
+        ServerPlayerEntity target = source.getServer().getPlayerManager().getPlayer(nick);
+        if (target == null) {
+            source.sendError(Text.literal("§c" + nick + " не в мережі."));
+            return 0;
+        }
+
+        if (db.isPvp(target.getUuid()) == wantPvp) {
+            String mode = wantPvp ? "PVP" : "PVE";
+            source.sendFeedback(() -> Text.literal(
+                    "§7" + nick + " вже в режимі " + mode + "."), false);
+            return 0;
+        }
+
+        // Bypass cooldown — set directly. setPvp() updates last_toggle to now, so the player's
+        // *next* /pvp toggle will still respect the 1-week cooldown from this admin change.
+        // If you want admin overrides to NOT touch the cooldown timer, see the alternative below.
+        db.setPvpKeepCooldown(target.getUuid(), wantPvp);
+        PvpEventHandler.applyPvpTeam(target, wantPvp);
+        PapiExpansion.notifyChange(target.getUuid());
+
+        if (wantPvp) {
+            target.sendMessage(Text.literal("§c⚔ Адмін перевів вас у режим PVP."));
+        } else {
+            target.sendMessage(Text.literal("§a🛡 Адмін перевів вас у режим PVE."));
+        }
+        String modeMsg = wantPvp ? "PVP" : "PVE";
+        source.sendFeedback(() -> Text.literal(
+                "§a" + nick + " переведений у режим " + modeMsg + "."), true);
+        return 1;
+    }
 }
+

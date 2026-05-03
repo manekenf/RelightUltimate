@@ -19,6 +19,7 @@ import net.minecraft.util.math.Vec3d;
 import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import ua.selectedproject.police.network.BindingNetworking;
 
 import java.util.UUID;
 
@@ -83,8 +84,10 @@ public final class BindingHandler {
     }
 
     private static void bind(ServerPlayerEntity officer, ServerPlayerEntity target, PoliceDatabase db) {
+        BindingNetworking.broadcastBind(officer.getServer(), target.getUuid(), officer.getUuid());
         db.setLeashed(target.getUuid(), true, officer.getUuid());
         db.setCaught(target.getUuid(), true, officer.getUuid());
+
         PvpEventHandler.applyCriminalTag(target, true);
 
         officer.swingHand(Hand.MAIN_HAND, true);
@@ -97,7 +100,9 @@ public final class BindingHandler {
         LOGGER.info("Officer {} leashed {}", officer.getName().getString(), target.getName().getString());
     }
 
+
     public static void unleash(ServerPlayerEntity officer, ServerPlayerEntity target, PoliceDatabase db) {
+        BindingNetworking.broadcastUnbind(officer.getServer(), target.getUuid());
         db.setLeashed(target.getUuid(), false, null);
         ServerWorld world = officer.getServerWorld();
         world.playSound(null, officer.getX(), officer.getY(), officer.getZ(),

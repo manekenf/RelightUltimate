@@ -62,7 +62,6 @@ public class PoliceEventHandler {
 
                     Vec3d frozen = boundPositions.get(uuid);
                     if (frozen == null) {
-                        // Record current pos as frozen position
                         boundPositions.put(uuid, player.getPos());
                     } else if (!status.isBound() && status.isLeashed()) {
                         UUID lt = status.leashedTo();
@@ -73,6 +72,8 @@ public class PoliceEventHandler {
                                         "§c⛓ Вас веде §e" + officer.getName().getString()), true);
                             }
                         }
+                    }     else if (doDistanceCheck && player.squaredDistanceTo(frozen) > 0.25) {
+                        player.requestTeleport(frozen.x, frozen.y, frozen.z);
                     }
 
                     // Show remaining time on actionbar

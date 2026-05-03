@@ -373,6 +373,31 @@ public class PoliceDatabase {
         }
     }
 
+    /** Set PVP without touching last_toggle — for admin overrides. */
+    public void setPvpKeepCooldown(UUID uuid, boolean pvp) {
+        ensureRow(uuid);
+        String sql = "UPDATE pvp_status SET is_pvp = ? WHERE player_uuid = ?";
+        try (PreparedStatement ps = connection.prepareStatement(sql)) {
+            ps.setInt(1, pvp ? 1 : 0);
+            ps.setString(2, uuid.toString());
+            ps.executeUpdate();
+        } catch (SQLException e) {
+            LOGGER.error("Failed to set pvp (keep cooldown) for {}", uuid, e);
+        }
+    }
+
+    public List<UUID> getAllLeashedPlayers() {
+        String sql = "SELECT player_uuid FROM pvp_status WHERE is_leashed = 1";
+        List<UUID> out = new ArrayList<>();
+        try (PreparedStatement ps = connection.prepareStatement(sql);
+             ResultSet rs = ps.executeQuery()) {
+            while (rs.next()) out.add(UUID.fromString(rs.getString("player_uuid")));
+        } catch (SQLException e) {
+            LOGGER.error("Failed to list leashed players", e);
+        }
+        return out;
+    }
+
     // ===================== PRISON ZONES =====================
 
     public PrisonZone addPrisonZone(UUID ownerUuid, String world, int x1, int y1, int z1, int x2, int y2, int z2) {
