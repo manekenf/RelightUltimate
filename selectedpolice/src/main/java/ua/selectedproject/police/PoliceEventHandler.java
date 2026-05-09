@@ -10,6 +10,8 @@ import net.minecraft.util.TypedActionResult;
 import net.minecraft.util.math.Vec3d;
 import ua.selectedproject.police.data.PlayerPvpStatus;
 import ua.selectedproject.police.data.PrisonZone;
+import ua.selectedproject.police.network.BindingNetworking;
+import ua.selectedproject.police.network.BindingSyncPayload;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -55,6 +57,7 @@ public class PoliceEventHandler {
                     if (boundUntil != null && Instant.now().isAfter(boundUntil)) {
                         // Binding expired
                         db.setBound(uuid, false, null, null);
+                        BindingNetworking.broadcast(server, uuid, BindingSyncPayload.State.NONE);
                         boundPositions.remove(uuid);
                         player.sendMessage(Text.literal("§aВас звільнено. Час утримання минув."));
                         continue;

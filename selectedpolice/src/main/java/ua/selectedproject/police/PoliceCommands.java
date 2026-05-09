@@ -11,6 +11,8 @@ import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 import ua.selectedproject.police.data.PlayerPvpStatus;
 import ua.selectedproject.police.data.PrisonZone;
+import ua.selectedproject.police.network.BindingNetworking;
+import ua.selectedproject.police.network.BindingSyncPayload;
 
 import java.time.Instant;
 import java.util.List;
@@ -36,6 +38,7 @@ public class PoliceCommands {
         registerPoliceCommand(dispatcher);
         registerAPoliceCommand(dispatcher);
         registerAPvpCommand(dispatcher);
+        BindingNetworking.registerPayloads();
     }
 
     // ==================== /pvp ====================
@@ -297,6 +300,8 @@ public class PoliceCommands {
         }
 
         db.releaseFromCustody(target.getUuid());
+        BindingNetworking.broadcast(source.getServer(), target.getUuid(),
+                BindingSyncPayload.State.NONE);
         db.setCriminal(target.getUuid(), false);
         PvpEventHandler.applyCriminalTag(target, false);
 
@@ -401,6 +406,8 @@ public class PoliceCommands {
 
         Instant boundUntil = Instant.now().plusSeconds(minutes * 60L);
         db.setBound(tu, true, boundUntil, officer.getUuid());
+        BindingNetworking.broadcast(source.getServer(), tu,
+                BindingSyncPayload.State.BOUND);
         db.setLeashed(tu, false, null);
         db.setCaught(tu, true, officer.getUuid());
         db.setPrisonSpawn(tu, chosen.world(), chosen.targetX(), chosen.targetY(), chosen.targetZ());
@@ -460,6 +467,8 @@ public class PoliceCommands {
         }
 
         db.releaseFromCustody(targetUuid);
+        BindingNetworking.broadcast(source.getServer(), target.getUuid(),
+                BindingSyncPayload.State.NONE);
         db.setCriminal(targetUuid, false);
         PvpEventHandler.applyCriminalTag(target, false);
 

@@ -20,6 +20,7 @@ import org.joml.Vector3f;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ua.selectedproject.police.network.BindingNetworking;
+import ua.selectedproject.police.network.BindingSyncPayload;
 
 import java.util.UUID;
 
@@ -84,11 +85,13 @@ public final class BindingHandler {
     }
 
     private static void bind(ServerPlayerEntity officer, ServerPlayerEntity target, PoliceDatabase db) {
-        BindingNetworking.broadcastBind(officer.getServer(), target.getUuid(), officer.getUuid());
         db.setLeashed(target.getUuid(), true, officer.getUuid());
         db.setCaught(target.getUuid(), true, officer.getUuid());
 
         PvpEventHandler.applyCriminalTag(target, true);
+
+        BindingNetworking.broadcast(officer.getServer(), target.getUuid(),
+                BindingSyncPayload.State.LEASHED);
 
         officer.swingHand(Hand.MAIN_HAND, true);
         ServerWorld world = officer.getServerWorld();
@@ -102,7 +105,6 @@ public final class BindingHandler {
 
 
     public static void unleash(ServerPlayerEntity officer, ServerPlayerEntity target, PoliceDatabase db) {
-        BindingNetworking.broadcastUnbind(officer.getServer(), target.getUuid());
         db.setLeashed(target.getUuid(), false, null);
         ServerWorld world = officer.getServerWorld();
         world.playSound(null, officer.getX(), officer.getY(), officer.getZ(),
@@ -114,6 +116,12 @@ public final class BindingHandler {
             drop.setPickupDelay(10);
             world.spawnEntity(drop);
         }
+        // Reset to NONE only if not bound; if bound, send BOUND state instead.
+        PoliceDatabase db2 = PoliceDatabase.getInstance();
+        BindingSyncPayload.State newState = (db2 != null && db2.isBound(target.getUuid()))
+                ? BindingSyncPayload.State.BOUND
+                : BindingSyncPayload.State.NONE;
+        BindingNetworking.broadcast(officer.getServer(), target.getUuid(), newState);
         officer.sendMessage(Text.literal("§a⛓ Відв'язано §e" + target.getName().getString()));
         target.sendMessage(Text.literal("§aВас відв'язали."));
     }

@@ -14,6 +14,7 @@ import net.minecraft.util.Formatting;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ua.selectedproject.police.network.BindingNetworking;
+import ua.selectedproject.police.network.BindingSyncPayload;
 
 import java.time.Instant;
 import java.util.*;
@@ -85,20 +86,21 @@ public class PvpEventHandler {
         // On respawn, apply bound status if flagged
         ServerPlayerEvents.AFTER_RESPAWN.register((oldPlayer, newPlayer, alive) -> {
             UUID uuid = newPlayer.getUuid();
+            deferredTagApply.add(uuid);
+
             UUID officerUuid = pendingBind.remove(uuid);
             if (officerUuid == null) return;
 
             PoliceDatabase db = PoliceDatabase.getInstance();
             if (db == null) return;
 
-            deferredTagApply.add(uuid);
-
             Instant boundUntil = Instant.now().plusSeconds(15 * 60);
             db.setBound(uuid, true, boundUntil, officerUuid);
             PoliceEventHandler.storeBoundPosition(uuid, newPlayer.getPos());
 
-            // Notify officer of spawn coordinates
             MinecraftServer server = newPlayer.getServer();
+            BindingNetworking.broadcast(server, uuid, BindingSyncPayload.State.BOUND);
+
             if (server != null) {
                 ServerPlayerEntity officer = server.getPlayerManager().getPlayer(officerUuid);
                 if (officer != null) {

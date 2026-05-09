@@ -7,7 +7,7 @@
   "environment": "*",
   "entrypoints": {
     "main": ["ua.selectedproject.police.SelectedPolice"],
-    "client": []
+    "client": [ua.selectedproject.police.client.SelectedPoliceClient]
   },
   "mixins": ["selectedpolice.mixins.json"],
   "depends": {
