@@ -23,31 +23,53 @@ import java.io.File;
  */
 public class RelightPapiBridge extends JavaPlugin {
 
+    /** Retry config: at boot the Fabric side may not have created the DB yet, so we
+     *  poll until it appears or we give up. 30s × 20 = 10 minutes total. */
+    private static final int  DB_CONNECT_MAX_ATTEMPTS = 20;
+    private static final long DB_CONNECT_RETRY_TICKS  = 30L * 20L; // 30s in 20Hz ticks
+
     @Override
     public void onEnable() {
-        // The Fabric mod creates the database at <server-root>/config/selectedcore/selectedcore.db
-        // (see SelectedCore.SERVER_STARTED handler — uses FabricLoader.getConfigDir()).
-        // Bukkit's working directory is the server root on Arclight, so this relative path resolves.
         File dbFile = new File("config" + File.separator + "selectedcore" + File.separator + "selectedcore.db");
-        if (!dbFile.exists()) {
-            getLogger().severe("Database not found at " + dbFile.getAbsolutePath() +
-                    " — make sure SelectedCore is loaded and ran at least once. " +
-                    "Plugin will stay loaded but placeholders will return empty.");
+
+        // Attempt #1 immediately so the common case (Fabric already started) is zero-latency.
+        if (!tryConnect(dbFile)) {
+            scheduleConnectRetry(dbFile, 1);
         }
 
-        try {
-            DbAccess.init(dbFile, getLogger());
-            getLogger().info("Connected to shared database at " + dbFile.getAbsolutePath());
-        } catch (Exception e) {
-            getLogger().severe("Failed to connect to shared database: " + e.getMessage());
-            // Still continue — register expansions; they'll just return empty until DB is ready.
-        }
-
-        // Register PAPI expansions. PAPI is on the same classloader as us (we're a Bukkit plugin),
-        // so .register() works directly.
+        // Always register expansions — they fall back to empty placeholders until the DB connects.
         boolean clansOk = new ClansExpansion().register();
         boolean policeOk = new PoliceExpansion().register();
         getLogger().info("PAPI expansions registered — clans=" + clansOk + ", police=" + policeOk);
+    }
+
+    private boolean tryConnect(File dbFile) {
+        if (DbAccess.isConnected()) return true;
+        if (!dbFile.exists()) return false;
+        try {
+            DbAccess.init(dbFile, getLogger());
+            getLogger().info("Connected to shared database at " + dbFile.getAbsolutePath());
+            return true;
+        } catch (Exception e) {
+            getLogger().warning("DB connect attempt failed: " + e.getMessage());
+            return false;
+        }
+    }
+
+    private void scheduleConnectRetry(File dbFile, int attempt) {
+        if (attempt > DB_CONNECT_MAX_ATTEMPTS) {
+            getLogger().severe("Database not found at " + dbFile.getAbsolutePath() +
+                    " after " + DB_CONNECT_MAX_ATTEMPTS + " attempts. Placeholders will stay empty " +
+                    "until you restart the plugin.");
+            return;
+        }
+        getLogger().info("DB not ready yet (attempt " + attempt + "/" +
+                DB_CONNECT_MAX_ATTEMPTS + "); retrying in 30s.");
+        getServer().getScheduler().runTaskLater(this, () -> {
+            if (!tryConnect(dbFile)) {
+                scheduleConnectRetry(dbFile, attempt + 1);
+            }
+        }, DB_CONNECT_RETRY_TICKS);
     }
 
     @Override

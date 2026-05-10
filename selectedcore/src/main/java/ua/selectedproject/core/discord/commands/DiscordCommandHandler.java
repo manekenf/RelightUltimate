@@ -66,7 +66,12 @@ public class DiscordCommandHandler extends ListenerAdapter {
         DatabaseManager db = DatabaseManager.getInstance();
         if (db == null) { event.reply("❌ Сервер не готовий.").setEphemeral(true).queue(); return; }
 
-        String nameOrTag = event.getOption("name").getAsString();
+        var nameOption = event.getOption("name");
+        if (nameOption == null) {
+            event.reply("❌ Вкажіть назву або тег клану.").setEphemeral(true).queue();
+            return;
+        }
+        String nameOrTag = nameOption.getAsString();
         Clan foundClan = db.getClanByName(nameOrTag);
         if (foundClan == null) foundClan = db.getClanByTag(nameOrTag);
         if (foundClan == null) {
@@ -105,7 +110,12 @@ public class DiscordCommandHandler extends ListenerAdapter {
         DatabaseManager db = DatabaseManager.getInstance();
         if (db == null) { event.reply("❌ Сервер не готовий.").setEphemeral(true).queue(); return; }
 
-        String type = event.getOption("type").getAsString().toLowerCase();
+        var typeOption = event.getOption("type");
+        if (typeOption == null) {
+            event.reply("❌ Використовуйте: `biggest` або `richest`").setEphemeral(true).queue();
+            return;
+        }
+        String type = typeOption.getAsString().toLowerCase();
 
         if (type.equals("biggest") || type.equals("найбільші")) {
             List<Map.Entry<Clan, Integer>> topBySize = db.getTopClansBySize(5);
@@ -141,7 +151,12 @@ public class DiscordCommandHandler extends ListenerAdapter {
         DatabaseManager db = DatabaseManager.getInstance();
         if (db == null) { event.reply("❌ Сервер не готовий.").setEphemeral(true).queue(); return; }
 
-        String nameOrTag = event.getOption("clan").getAsString();
+        var clanOption = event.getOption("clan");
+        if (clanOption == null) {
+            event.reply("❌ Вкажіть назву або тег клану.").setEphemeral(true).queue();
+            return;
+        }
+        String nameOrTag = clanOption.getAsString();
         Clan foundClan = db.getClanByName(nameOrTag);
         if (foundClan == null) foundClan = db.getClanByTag(nameOrTag);
         if (foundClan == null) {

@@ -107,6 +107,9 @@ public class SelectedCore implements ModInitializer {
             // Every minute — addon tick + maintenance
             if (tickCounter % 1200 == 0) {
                 AddonRegistry.notifyMinuteTick(server);
+                DatabaseManager db = DatabaseManager.getInstance();
+                if (db != null) db.purgeExpiredLinkCodes();
+                HubPortalBlock.validateLoadedPortals(server);
             }
 
             if (tickCounter > 1_000_000) tickCounter = 0;

@@ -30,17 +30,17 @@ public class PoliceExpansion extends PlaceholderExpansion {
         return switch (params) {
             case "icon" -> {
                 if (s.criminal())                 yield "    §c[злочинець]";  // tmp text
-                else if (DbAccess.isPolice(uuid)) yield "      §b[поліція]";  // tmp text
+                else if (s.police()) yield "      §b[поліція]";  // tmp text
                 else if (s.pvp())                 yield "                \uE102"; // pvp icon
                 else                              yield "                \uE103"; // pve icon
             }
             case "status" -> {
                 if (s.criminal())                 yield "CRIMINAL";
-                else if (DbAccess.isPolice(uuid)) yield "POLICE";
+                else if (s.police()) yield "POLICE";
                 else if (s.pvp())                 yield "PVP";
                 else                              yield "PVE";
             }
-            case "is_police" -> Boolean.toString(DbAccess.isPolice(uuid));
+            case "is_police" -> Boolean.toString(s.police());
             case "is_bound" -> Boolean.toString(s.bound());
             case "is_leashed" -> Boolean.toString(s.leashed());
             default -> null;

@@ -23,9 +23,29 @@ import static net.minecraft.server.command.CommandManager.literal;
 
 public class PoliceCommands {
 
-    private static final long PVP_COOLDOWN_SECONDS = 7L * 24 * 3600; // 1 week
-    static final int MAX_ZONES_PER_OFFICER = 10;
-    static final int MAX_ZONE_VOLUME = 50_000;
+    private static long pvpCooldownSeconds() {
+        return ua.selectedproject.core.config.CoreConfig.getInstance().pvpCooldownSeconds;
+    }
+
+    /** Slavic plural agreement: pick form by last digit/teen rules.
+     *  one (1, 21…), few (2-4, 22-24…), many (everything else). */
+    private static String plural(long n, String one, String few, String many) {
+        long mod100 = Math.abs(n) % 100;
+        long mod10 = Math.abs(n) % 10;
+        if (mod100 >= 11 && mod100 <= 14) return many;
+        if (mod10 == 1) return one;
+        if (mod10 >= 2 && mod10 <= 4) return few;
+        return many;
+    }
+    static int maxZonesPerOfficer() {
+        return ua.selectedproject.core.config.CoreConfig.getInstance().prisonMaxZonesPerOfficer;
+    }
+    static int maxZoneVolume() {
+        return ua.selectedproject.core.config.CoreConfig.getInstance().prisonMaxZoneVolume;
+    }
+    static int minZoneVolume() {
+        return ua.selectedproject.core.config.CoreConfig.getInstance().prisonMinZoneVolume;
+    }
 
     public static void register() {
         CommandRegistrationCallback.EVENT.register(PoliceCommands::registerAll);
@@ -86,15 +106,28 @@ public class PoliceCommands {
 
         // Check cooldown
         long secondsSinceToggle = Instant.now().getEpochSecond() - status.lastToggle().getEpochSecond();
-        if (secondsSinceToggle < PVP_COOLDOWN_SECONDS) {
-            long remaining = PVP_COOLDOWN_SECONDS - secondsSinceToggle;
+        long cooldown = pvpCooldownSeconds();
+        if (secondsSinceToggle < cooldown) {
+            long remaining = cooldown - secondsSinceToggle;
             long days = remaining / 86400, hours = (remaining % 86400) / 3600, mins = (remaining % 3600) / 60;
             player.sendMessage(Text.literal(String.format(
-                    "§cВи зможете змінити режим через %d д. %d год. %d хв.", days, hours, mins)));
+                    "§cВи зможете змінити режим через %d %s, %d %s, %d %s.",
+                    days, plural(days, "день", "дні", "днів"),
+                    hours, plural(hours, "годину", "години", "годин"),
+                    mins, plural(mins, "хвилину", "хвилини", "хвилин"))));
             return 0;
         }
 
         db.setPvp(player.getUuid(), wantPvp);
+
+        // Switching to PVE forfeits the police role — police powers require PVP exposure
+        // for symmetry with criminals. Do this before applyPvpTeam so the team prefix
+        // updates correctly.
+        if (!wantPvp && db.isPolice(player.getUuid())) {
+            db.setPolice(player.getUuid(), false);
+            player.sendMessage(Text.literal("§7Поліцейський статус знято — він доступний лише в режимі PVP."));
+        }
+
         PvpEventHandler.applyPvpTeam(player, wantPvp);
 
         if (wantPvp) {
@@ -126,18 +159,27 @@ public class PoliceCommands {
                         .then(literal("jail")
                                 .then(argument("nick", StringArgumentType.word())
                                         .executes(ctx -> handlePrisonJail(ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "nick"), 15))
+                                                StringArgumentType.getString(ctx, "nick"), 15, -1))
                                         .then(argument("minutes", IntegerArgumentType.integer(1, 60))
                                                 .executes(ctx -> handlePrisonJail(ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "nick"),
-                                                        IntegerArgumentType.getInteger(ctx, "minutes"))))))
+                                                        IntegerArgumentType.getInteger(ctx, "minutes"), -1))
+                                                .then(argument("zoneId", IntegerArgumentType.integer(1))
+                                                        .executes(ctx -> handlePrisonJail(ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "nick"),
+                                                                IntegerArgumentType.getInteger(ctx, "minutes"),
+                                                                IntegerArgumentType.getInteger(ctx, "zoneId")))))))
                         .then(literal("list")
                                 .executes(ctx -> handlePrisonList(ctx.getSource())))
                         .then(literal("set")
                                 .executes(ctx -> handlePrisonSetMode(ctx.getSource())))
+                        .then(literal("cancel")
+                                .executes(ctx -> handlePrisonCancel(ctx.getSource())))
                         .then(literal("clean")
                                 .then(literal("last")
-                                        .executes(ctx -> handlePoliceClean(ctx.getSource())))))
+                                        .executes(ctx -> handlePoliceClean(ctx.getSource(), false))
+                                        .then(literal("confirm")
+                                                .executes(ctx -> handlePoliceClean(ctx.getSource(), true))))))
                 .then(literal("spawn")
                         .then(argument("nick", StringArgumentType.word())
                                 .executes(ctx -> handlePoliceSpawn(ctx.getSource(),
@@ -148,7 +190,9 @@ public class PoliceCommands {
                                         StringArgumentType.getString(ctx, "nick")))))
                 .then(literal("clean")
                         .then(literal("last")
-                                .executes(ctx -> handlePoliceClean(ctx.getSource()))))
+                                .executes(ctx -> handlePoliceClean(ctx.getSource(), false))
+                                .then(literal("confirm")
+                                        .executes(ctx -> handlePoliceClean(ctx.getSource(), true)))))
         );
     }
 
@@ -176,6 +220,7 @@ public class PoliceCommands {
         }
 
         db.setPolice(player.getUuid(), true);
+        PvpEventHandler.applyPvpTeam(player, true);
         player.sendMessage(Text.literal("§b👮 Ви тепер поліцейський. Використовуйте /police off щоб вийти."));
         return 1;
     }
@@ -200,7 +245,20 @@ public class PoliceCommands {
         }
 
         db.setPolice(player.getUuid(), false);
+        PvpEventHandler.applyPvpTeam(player, db.isPvp(player.getUuid()));
         player.sendMessage(Text.literal("§7Ви більше не поліцейський."));
+        return 1;
+    }
+
+    private static int handlePrisonCancel(ServerCommandSource source) {
+        ServerPlayerEntity player;
+        try { player = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
+        if (PrisonSelectionHandler.isInSelectionMode(player.getUuid())) {
+            PrisonSelectionHandler.cancelSelectionMode(player.getUuid());
+            player.sendMessage(Text.literal("§7Виділення зони скасовано."));
+        } else {
+            player.sendMessage(Text.literal("§7Ви не у режимі виділення."));
+        }
         return 1;
     }
 
@@ -224,8 +282,9 @@ public class PoliceCommands {
         }
 
         int currentCount = db.countZonesByOwner(player.getUuid());
-        if (currentCount >= MAX_ZONES_PER_OFFICER) {
-            player.sendMessage(Text.literal("§cВи досягли ліміту (" + MAX_ZONES_PER_OFFICER + ") зон в'язниці."));
+        int max = maxZonesPerOfficer();
+        if (currentCount >= max) {
+            player.sendMessage(Text.literal("§cВи досягли ліміту (" + max + ") зон в'язниці."));
             return 0;
         }
 
@@ -310,7 +369,7 @@ public class PoliceCommands {
         return 1;
     }
 
-    private static int handlePoliceClean(ServerCommandSource source) {
+    private static int handlePoliceClean(ServerCommandSource source, boolean confirmed) {
         ServerPlayerEntity player;
         try {
             player = source.getPlayerOrThrow();
@@ -330,8 +389,15 @@ public class PoliceCommands {
             return 0;
         }
 
+        PrisonZone last = zones.get(zones.size() - 1);
+        if (!confirmed) {
+            player.sendMessage(Text.literal(String.format(
+                    "§eВи впевнені, що хочете видалити зону #%d (%d блоків)? §7Введіть §f/police clean last confirm",
+                    last.id(), last.volume())));
+            return 1;
+        }
+
         if (db.removeLastZoneByOwner(player.getUuid())) {
-            PrisonZone last = zones.get(zones.size() - 1);
             player.sendMessage(Text.literal("§aОстанню зону в'язниці #" + last.id() + " видалено."));
         } else {
             source.sendError(Text.literal("§cПомилка видалення зони."));
@@ -371,7 +437,7 @@ public class PoliceCommands {
         return 0;
     }
 
-    private static int handlePrisonJail(ServerCommandSource source, String nick, int minutes) {
+    private static int handlePrisonJail(ServerCommandSource source, String nick, int minutes, int requestedZoneId) {
         ServerPlayerEntity officer;
         try { officer = source.getPlayerOrThrow(); } catch (Exception e) { return 0; }
         PoliceDatabase db = PoliceDatabase.getInstance();
@@ -388,8 +454,18 @@ public class PoliceCommands {
 
         List<PrisonZone> zones = db.getPrisonZonesByOwner(officer.getUuid());
         PrisonZone chosen = null;
-        for (PrisonZone z : zones) if (z.homeX() != null) { chosen = z; break; }
-        if (chosen == null && !zones.isEmpty()) chosen = zones.get(0);
+        if (requestedZoneId > 0) {
+            // Officer specified a zone; honour it iff they own it.
+            for (PrisonZone z : zones) if (z.id() == requestedZoneId) { chosen = z; break; }
+            if (chosen == null) {
+                officer.sendMessage(Text.literal("§cЗона #" + requestedZoneId + " не належить вам."));
+                return 0;
+            }
+        } else {
+            // Auto-pick: prefer a zone with a configured home; otherwise the lowest-id one.
+            for (PrisonZone z : zones) if (z.homeX() != null) { chosen = z; break; }
+            if (chosen == null && !zones.isEmpty()) chosen = zones.get(0);
+        }
         if (chosen == null) {
             officer.sendMessage(Text.literal("§cУ вас немає зон. /police prison set")); return 0;
         }
@@ -403,6 +479,10 @@ public class PoliceCommands {
         target.teleport(world, chosen.targetX(), chosen.targetY(), chosen.targetZ(),
                 java.util.EnumSet.noneOf(net.minecraft.network.packet.s2c.play.PositionFlag.class),
                 target.getYaw(), target.getPitch());
+        // Reset velocity so a sprinting / falling target doesn't slide off the spawn point.
+        target.setVelocity(net.minecraft.util.math.Vec3d.ZERO);
+        target.velocityModified = true;
+        target.fallDistance = 0f;
 
         Instant boundUntil = Instant.now().plusSeconds(minutes * 60L);
         db.setBound(tu, true, boundUntil, officer.getUuid());
@@ -531,6 +611,13 @@ public class PoliceCommands {
         // *next* /pvp toggle will still respect the 1-week cooldown from this admin change.
         // If you want admin overrides to NOT touch the cooldown timer, see the alternative below.
         db.setPvpKeepCooldown(target.getUuid(), wantPvp);
+
+        // Switching to PVE forfeits the police role.
+        if (!wantPvp && db.isPolice(target.getUuid())) {
+            db.setPolice(target.getUuid(), false);
+            target.sendMessage(Text.literal("§7Поліцейський статус знято адміном."));
+        }
+
         PvpEventHandler.applyPvpTeam(target, wantPvp);
 
         if (wantPvp) {

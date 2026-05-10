@@ -20,9 +20,11 @@ import java.util.UUID;
 public class SelectedClansClient implements ClientModInitializer {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedClans/Client");
 
-    // Cached clan data received from server
-    public static ClanClientData cachedClanData = null;
-    public static List<MemberEntry> cachedMembers = new ArrayList<>();
+    // Cached clan data received from server. Mutated on the network thread
+    // (in registerGlobalReceiver lambdas) and read on the client thread when
+    // opening the screen — `volatile` guarantees publication.
+    public static volatile ClanClientData cachedClanData = null;
+    public static volatile List<MemberEntry> cachedMembers = new ArrayList<>();
 
     public record ClanClientData(int clanId, String name, String tag, String leaderUuid,
                                   long createdAt, int memberCount, int rank) {}
@@ -50,36 +52,36 @@ public class SelectedClansClient implements ClientModInitializer {
                             payload.leaderUuid(), payload.createdAt(),
                             payload.memberCount(), payload.rank()
                     );
-                    // Don't open screen yet — wait for member data
+                    // If the members payload arrived first (race), open the screen now.
+                    tryOpenScreen(context.client());
                 }
         );
 
         ClientPlayNetworking.registerGlobalReceiver(
                 NetworkHandler.ClanMembersSyncPayload.ID,
                 (payload, context) -> {
-                    // Parse members: "uuid|name;uuid|name;..."
-                    cachedMembers.clear();
-                    if (!payload.membersData().isEmpty()) {
-                        String[] entries = payload.membersData().split(";");
-                        for (String entry : entries) {
-                            String[] parts = entry.split("\\|", 2);
-                            if (parts.length == 2) {
-                                cachedMembers.add(new MemberEntry(parts[0], parts[1]));
-                            }
-                        }
+                    List<MemberEntry> parsed = new ArrayList<>(payload.members().size());
+                    for (var m : payload.members()) {
+                        parsed.add(new MemberEntry(m.uuid(), m.name()));
                     }
-
-                    // Now open the management screen
-                    if (cachedClanData != null) {
-                        context.client().execute(() -> {
-                            MinecraftClient.getInstance().setScreen(
-                                    new ClanManagementScreen(cachedClanData, cachedMembers)
-                            );
-                        });
-                    }
+                    cachedMembers = parsed;
+                    tryOpenScreen(context.client());
                 }
         );
 
         LOGGER.info("SelectedClans client initialized!");
+    }
+
+    /**
+     * Open / refresh the management screen once both the clan-data and members
+     * payloads have arrived. Either may land first; the second arrival is what
+     * actually opens the screen.
+     */
+    private static void tryOpenScreen(MinecraftClient client) {
+        ClanClientData data = cachedClanData;
+        List<MemberEntry> members = cachedMembers;
+        if (data == null) return;
+        List<MemberEntry> snapshot = List.copyOf(members);
+        client.execute(() -> client.setScreen(new ClanManagementScreen(data, snapshot)));
     }
 }

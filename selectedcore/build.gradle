@@ -5,11 +5,18 @@ loom {
     mods {
         selectedcore {
             sourceSet sourceSets.main
-            sourceSet sourceSets.client
         }
     }
 }
 
+// JDA's transitive tree (okhttp + okio + Kotlin stdlib + Jackson + Trove + Apache
+// Collections) is bundled in via `include`. On Arclight the Bukkit classloader and
+// the Fabric mod classloader are isolated, so two plugins each shipping their own
+// kotlin-stdlib won't clash *between* themselves — but if Arclight or another mod
+// also bundles a different kotlin-stdlib version, classloading order can pick the
+// wrong copy and surface as MethodNotFound at runtime. If you ever see Kotlin/okhttp
+// errors at boot, the easiest mitigation is to switch JDA to a leaner alternative
+// (e.g. discord4j) or drop bot features that need okhttp.
 dependencies {
     // SQLite
     implementation "org.xerial:sqlite-jdbc:3.47.2.0"

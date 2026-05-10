@@ -25,9 +25,10 @@ import java.util.UUID;
  */
 public class DiscordBot {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedCore/Discord");
-    private static DiscordBot instance;
-    private JDA jda;
-    private boolean running = false;
+    private static volatile DiscordBot instance;
+    private volatile JDA jda;
+    private volatile boolean running = false;
+    private volatile boolean shutdownRequested = false;
 
     public static DiscordBot getInstance() {
         return instance;
@@ -39,9 +40,17 @@ public class DiscordBot {
     }
 
     public static void stop() {
-        if (instance != null && instance.jda != null) {
-            instance.jda.shutdown();
-            instance.running = false;
+        DiscordBot bot = instance;
+        if (bot == null) return;
+        bot.shutdownRequested = true;
+        JDA jda = bot.jda;
+        if (jda != null) {
+            try {
+                jda.shutdown();
+            } catch (Exception e) {
+                LOGGER.warn("Error during JDA shutdown: {}", e.getMessage());
+            }
+            bot.running = false;
             LOGGER.info("Discord bot stopped");
         }
     }
@@ -51,18 +60,34 @@ public class DiscordBot {
         String token = config.discordBotToken;
 
         if (token == null || token.equals("YOUR_BOT_TOKEN_HERE") || token.isEmpty()) {
-            LOGGER.warn("Discord bot token not configured — bot will not start. Set it in clansmod.json");
+            LOGGER.warn("Discord bot token not configured — bot will not start. Set it in selectedcore.json");
             return;
         }
 
         try {
-            jda = JDABuilder.createDefault(token)
+            JDA built = JDABuilder.createDefault(token)
                     .enableIntents(GatewayIntent.MESSAGE_CONTENT, GatewayIntent.GUILD_MESSAGES)
                     .setActivity(Activity.playing("SelectedProject"))
                     .addEventListeners(new DiscordCommandHandler())
                     .build();
 
-            jda.awaitReady();
+            // Publish jda before awaitReady so a concurrent stop() can interrupt the connection.
+            jda = built;
+
+            if (shutdownRequested) {
+                LOGGER.info("Shutdown requested before Discord bot finished starting; aborting");
+                built.shutdown();
+                return;
+            }
+
+            built.awaitReady();
+
+            if (shutdownRequested) {
+                LOGGER.info("Shutdown requested during Discord bot startup; tearing down");
+                built.shutdown();
+                return;
+            }
+
             running = true;
 
             // Register slash commands
@@ -158,6 +183,7 @@ public class DiscordBot {
 
     /**
      * Send a DM to a linked player by their Minecraft UUID.
+     * Fully async — never blocks the calling thread.
      */
     public void sendDirectMessage(UUID minecraftUuid, String title, String message) {
         if (!running) return;
@@ -168,22 +194,28 @@ public class DiscordBot {
         DiscordLink link = db.getLinkByMinecraft(minecraftUuid);
         if (link == null) return;
 
-        try {
-            User user = jda.retrieveUserById(link.getDiscordId()).complete();
-            if (user != null) {
-                EmbedBuilder embed = new EmbedBuilder()
-                        .setTitle(title)
-                        .setDescription(message)
-                        .setColor(new Color(107, 92, 231))
-                        .setTimestamp(Instant.now());
+        EmbedBuilder embed = new EmbedBuilder()
+                .setTitle(title)
+                .setDescription(message)
+                .setColor(new Color(107, 92, 231))
+                .setTimestamp(Instant.now());
 
-                user.openPrivateChannel().queue(channel ->
-                        channel.sendMessageEmbeds(embed.build()).queue()
-                );
-            }
-        } catch (Exception e) {
-            LOGGER.error("Failed to send DM to Discord user {}", link.getDiscordId(), e);
-        }
+        jda.retrieveUserById(link.getDiscordId()).queue(
+                user -> {
+                    if (user == null) return;
+                    user.openPrivateChannel().queue(
+                            channel -> channel.sendMessageEmbeds(embed.build()).queue(
+                                    null,
+                                    err -> LOGGER.warn("Failed to send DM to Discord user {}: {}",
+                                            link.getDiscordId(), err.getMessage())
+                            ),
+                            err -> LOGGER.warn("Failed to open private channel for Discord user {}: {}",
+                                    link.getDiscordId(), err.getMessage())
+                    );
+                },
+                err -> LOGGER.warn("Failed to retrieve Discord user {}: {}",
+                        link.getDiscordId(), err.getMessage())
+        );
     }
 
     /**

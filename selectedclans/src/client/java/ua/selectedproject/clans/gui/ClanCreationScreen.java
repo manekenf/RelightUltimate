@@ -99,7 +99,8 @@ public class ClanCreationScreen extends Screen {
     public void render(DrawContext context, int mouseX, int mouseY, float delta) {
         context.fillGradient(0, 0, this.width, this.height, 0xC0101010, 0xD0101010);
 
-        int drawLeft = guiLeft;
+        int shakeX = (int) (Math.sin(System.currentTimeMillis() * 0.05) * shakeOffset);
+        int drawLeft = guiLeft + shakeX;
         int drawTop = guiTop;
 
         // Draw background texture (however you're doing it now — keep it)
@@ -108,13 +109,6 @@ public class ClanCreationScreen extends Screen {
                 0, 0,
                 GUI_WIDTH, GUI_HEIGHT,
                 GUI_WIDTH, GUI_HEIGHT);
-
-        // Draw ALL text at screen coordinates, NOT inside a scaled matrix
-        // Use guiLeft + offset * SCALE for positioning
-        context.drawText(this.textRenderer, "Назва DVPF0",
-                drawLeft + 10 * SCALE + 4,
-                drawTop + 5 * SCALE + 4,
-                0x000000, false);
 
         // "Create" button label — centered in the left button area
         context.drawCenteredTextWithShadow(this.textRenderer,
@@ -187,10 +181,10 @@ public class ClanCreationScreen extends Screen {
         String name = nameField.getText().trim();
         String tag = tagField.getText().trim();
 
+        // Only the trivial empty check happens client-side. Length / format / uniqueness
+        // are validated authoritatively on the server, which reports errors via chat.
         if (name.isEmpty()) { showError("Name cannot be empty"); return; }
         if (tag.isEmpty()) { showError("Tag cannot be empty"); return; }
-        if (name.length() < 3) { showError("Name too short (min 3)"); return; }
-        if (tag.length() < 2) { showError("Tag too short (min 2)"); return; }
 
         ClientPlayNetworking.send(new NetworkHandler.ClanCreateRequestPayload(name, tag));
         this.close();

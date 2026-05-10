@@ -123,13 +123,6 @@ public class ClanManagementScreen extends Screen {
                 GUI_WIDTH, GUI_HEIGHT,
                 GUI_WIDTH, GUI_HEIGHT);
 
-        // Draw ALL text at screen coordinates, NOT inside a scaled matrix
-        // Use guiLeft + offset * SCALE for positioning
-        context.drawText(this.textRenderer, "Назва DVPF0",
-                drawLeft + 10 * SCALE + 4,
-                drawTop + 5 * SCALE + 4,
-                0x000000, false);
-
         // ===== INFO PARCHMENT: clan name, date, members, rank =====
         int infoX = guiLeft + INFO_X * SCALE + 4;
         int infoY = guiTop + INFO_Y * SCALE + 2;
@@ -233,12 +226,11 @@ public class ClanManagementScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontalAmount, double verticalAmount) {
-        // Scroll the member list
-        if (verticalAmount > 0) {
-            scrollOffset = Math.max(0, scrollOffset - 1);
-        } else if (verticalAmount < 0) {
-            scrollOffset = Math.min(maxScroll, scrollOffset + 1);
-        }
+        // Scroll the member list. Use magnitude so high-precision wheels / trackpads
+        // don't get clamped to ±1.
+        int step = (int) Math.round(verticalAmount);
+        if (step == 0) step = verticalAmount > 0 ? 1 : -1;
+        scrollOffset = Math.max(0, Math.min(maxScroll, scrollOffset - step));
         return true;
     }
 
@@ -268,10 +260,13 @@ public class ClanManagementScreen extends Screen {
 
                 if (mouseX >= kickX && mouseX <= kickX + 8
                         && mouseY >= rowY && mouseY <= rowY + MEMBER_ROW_HEIGHT) {
+                    // Send kick request; do NOT optimistically remove. The server will
+                    // re-sync clan data via ClanDataSyncPayload + ClanMembersSyncPayload
+                    // after a successful kick (see ClanActionHandler.handleKickPlayer),
+                    // and the receiver in SelectedClansClient reopens this screen with
+                    // the fresh list. If the kick is rejected, the client list stays
+                    // intact instead of lying.
                     ClientPlayNetworking.send(new NetworkHandler.ClanKickRequestPayload(member.uuid()));
-                    members.remove(idx);
-                    maxScroll = Math.max(0, members.size() - visibleMembers);
-                    scrollOffset = Math.min(scrollOffset, maxScroll);
                     return true;
                 }
             }

@@ -4,12 +4,20 @@
   "version": "${version}",
   "name": "SelectedPolice",
   "description": "PVP politics and police system for Selected Project servers",
+  "authors": ["SelectedProject Team"],
+  "license": "All Rights Reserved",
   "environment": "*",
   "entrypoints": {
     "main": ["ua.selectedproject.police.SelectedPolice"],
-    "client": [ua.selectedproject.police.client.SelectedPoliceClient]
+    "client": ["ua.selectedproject.police.client.SelectedPoliceClient"]
   },
-  "mixins": ["selectedpolice.mixins.json"],
+  "mixins": [
+    "selectedpolice.mixins.json",
+    {
+      "config": "selectedpolice.client.mixins.json",
+      "environment": "client"
+    }
+  ],
   "depends": {
     "fabricloader": ">=0.16.0",
     "minecraft": "~1.21.1",

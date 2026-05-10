@@ -1,10 +1,11 @@
 {
   "required": true,
   "minVersion": "0.8",
-  "package": "ua.selectedproject.clans.mixin",
+  "package": "ua.selectedproject.police.client.mixin",
   "compatibilityLevel": "JAVA_21",
-  "mixins": [
+  "mixins": [],
+  "client": [
+    "PlayerEntityModelMixin"
   ],
-  "client": [],
   "injectors": { "defaultRequire": 1 }
 }

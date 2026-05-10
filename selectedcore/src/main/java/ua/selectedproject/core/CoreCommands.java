@@ -16,6 +16,12 @@ import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 
+import java.util.ArrayDeque;
+import java.util.Deque;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+
 import static net.minecraft.server.command.CommandManager.argument;
 import static net.minecraft.server.command.CommandManager.literal;
 
@@ -23,6 +29,10 @@ import static net.minecraft.server.command.CommandManager.literal;
  * Core commands: /hub, /sethubspawn, /coins, /discord, /resourceworld, /selectedcore
  */
 public class CoreCommands {
+    /** /discord link rate limit: at most this many attempts per hour per UUID. */
+    private static final int LINK_RATE_LIMIT = 5;
+    private static final long LINK_RATE_WINDOW_MS = 60L * 60L * 1000L;
+    private static final Map<UUID, Deque<Long>> linkAttempts = new HashMap<>();
 
     public static void register() {
         CommandRegistrationCallback.EVENT.register(CoreCommands::registerAll);
@@ -121,20 +131,12 @@ public class CoreCommands {
                         .executes(ctx -> handleResourceStatus(ctx.getSource())))
                 .then(literal("nether")
                         .then(argument("state", StringArgumentType.word())
-                                .executes(ctx -> {
-                                    boolean enable = StringArgumentType.getString(ctx, "state").equalsIgnoreCase("enable");
-                                    ua.selectedproject.core.resourceworld.ResourceWorldScheduler.getInstance().setNetherEnabled(enable);
-                                    ctx.getSource().sendFeedback(() -> Text.literal("§eNether " + (enable ? "enabled" : "disabled")), true);
-                                    return 1;
-                                })))
+                                .executes(ctx -> setResourceDimension(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "state"), true))))
                 .then(literal("end")
                         .then(argument("state", StringArgumentType.word())
-                                .executes(ctx -> {
-                                    boolean enable = StringArgumentType.getString(ctx, "state").equalsIgnoreCase("enable");
-                                    ua.selectedproject.core.resourceworld.ResourceWorldScheduler.getInstance().setEndEnabled(enable);
-                                    ctx.getSource().sendFeedback(() -> Text.literal("§eEnd " + (enable ? "enabled" : "disabled")), true);
-                                    return 1;
-                                })))
+                                .executes(ctx -> setResourceDimension(ctx.getSource(),
+                                        StringArgumentType.getString(ctx, "state"), false))))
         );
 
         // /selectedcore setleaderboard/setportal
@@ -167,7 +169,10 @@ public class CoreCommands {
             default -> ItemStack.EMPTY;
         };
         if (coinStack.isEmpty()) return 0;
-        target.getInventory().insertStack(coinStack);
+        if (!target.getInventory().insertStack(coinStack) && !coinStack.isEmpty()) {
+            // Inventory was (partially) full — drop whatever didn't fit at the player's feet.
+            target.dropItem(coinStack, false);
+        }
 
         String coinName = switch (tier) {
             case 1 -> config.coinTier1DisplayName;
@@ -198,11 +203,60 @@ public class CoreCommands {
     private static int handleDiscordLink(ServerPlayerEntity player, String code) {
         DatabaseManager db = DatabaseManager.getInstance();
         CoreLocalization lang = CoreLocalization.getInstance();
+
+        if (!checkLinkRateLimit(player.getUuid())) {
+            player.sendMessage(Text.literal(lang.get("discord.link.rate_limited")));
+            return 0;
+        }
+
         Long discordId = db.getDiscordIdByCode(code);
-        if (discordId == null) { player.sendMessage(Text.literal(lang.get("discord.link.invalid_code"))); return 0; }
-        db.createLink(discordId, player.getUuid(), player.getName().getString());
-        db.deleteLinkCode(code);
+        if (discordId == null) {
+            player.sendMessage(Text.literal(lang.get("discord.link.invalid_code")));
+            return 0;
+        }
+
+        // Atomic claim: delete the code first; if 0 rows affected, another player already used it.
+        if (!db.consumeLinkCode(code)) {
+            player.sendMessage(Text.literal(lang.get("discord.link.invalid_code")));
+            return 0;
+        }
+
+        var link = db.createLink(discordId, player.getUuid(), player.getName().getString());
+        if (link == null) {
+            // UNIQUE collision (already linked) — code was consumed but link not created.
+            player.sendMessage(Text.literal(lang.get("discord.link.already_linked")));
+            return 0;
+        }
         player.sendMessage(Text.literal(lang.get("discord.link.success")));
+        return 1;
+    }
+
+    private static synchronized boolean checkLinkRateLimit(UUID uuid) {
+        long now = System.currentTimeMillis();
+        Deque<Long> attempts = linkAttempts.computeIfAbsent(uuid, k -> new ArrayDeque<>());
+        while (!attempts.isEmpty() && now - attempts.peekFirst() > LINK_RATE_WINDOW_MS) {
+            attempts.pollFirst();
+        }
+        if (attempts.size() >= LINK_RATE_LIMIT) return false;
+        attempts.addLast(now);
+        return true;
+    }
+
+    private static int setResourceDimension(ServerCommandSource source, String state, boolean nether) {
+        boolean enable;
+        if (state.equalsIgnoreCase("enable") || state.equalsIgnoreCase("on") || state.equalsIgnoreCase("true")) {
+            enable = true;
+        } else if (state.equalsIgnoreCase("disable") || state.equalsIgnoreCase("off") || state.equalsIgnoreCase("false")) {
+            enable = false;
+        } else {
+            source.sendError(Text.literal("§cExpected 'enable' or 'disable', got '" + state + "'"));
+            return 0;
+        }
+        var scheduler = ua.selectedproject.core.resourceworld.ResourceWorldScheduler.getInstance();
+        if (nether) scheduler.setNetherEnabled(enable);
+        else scheduler.setEndEnabled(enable);
+        source.sendFeedback(() -> Text.literal("§e" + (nether ? "Nether" : "End") +
+                " " + (enable ? "enabled" : "disabled")), true);
         return 1;
     }
 

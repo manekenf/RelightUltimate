@@ -17,7 +17,7 @@ import ua.selectedproject.police.client.BindingClientCache;
  * Runs at TAIL of {@link BipedEntityModel#setAngles} so it overrides any other rotation
  * already applied (walking sway, sneaking, etc).
  */
-@Mixin(PlayerEntityModel.class)
+@Mixin(value = PlayerEntityModel.class, priority = 1100)
 public abstract class PlayerEntityModelMixin extends BipedEntityModel<LivingEntity> {
 
     private PlayerEntityModelMixin() { super(null); }

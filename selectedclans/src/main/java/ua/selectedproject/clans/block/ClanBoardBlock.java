@@ -81,7 +81,7 @@ public class ClanBoardBlock extends HorizontalFacingBlock {
         if (playerClan == null) {
             net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(
                     serverPlayer,
-                    new NetworkHandler.OpenClanCreateScreenPayload(true)
+                    NetworkHandler.OpenClanCreateScreenPayload.INSTANCE
             );
         } else if (playerClan.getLeaderUuid().equals(serverPlayer.getUuid())) {
             NetworkHandler.sendClanDataToPlayer(serverPlayer, playerClan);

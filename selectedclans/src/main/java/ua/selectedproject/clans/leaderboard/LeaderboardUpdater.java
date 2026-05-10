@@ -30,6 +30,11 @@ public class LeaderboardUpdater {
     private static Vec3d sizeLeaderboardPos = null;
     private static Vec3d wealthLeaderboardPos = null;
 
+    // Last-known clan wealth, keyed by clan id. Only populated while a clan's leader
+    // is online; survives the leader logging out so the wealth board doesn't churn
+    // when leaders go offline.
+    private static final java.util.Map<Integer, Long> lastWealth = new java.util.concurrent.ConcurrentHashMap<>();
+
     public static void setSizeLeaderboardPos(Vec3d pos) {
         sizeLeaderboardPos = pos;
     }
@@ -89,19 +94,23 @@ public class LeaderboardUpdater {
             lines.add(Text.literal("§6§l✦ Найбагатші клани ✦"));
             lines.add(Text.literal("§8──────────────"));
 
-            // Get all clans and calculate wealth from online leaders
+            // Get all clans and use the most recent known wealth value for ranking.
+            // While a leader is online we recompute live; otherwise we fall back to
+            // the last cached value, so offline leaders don't drop their clan to 0.
             List<Clan> allClans = db.getAllClans();
             List<Map.Entry<Clan, Long>> clanWealth = new ArrayList<>();
 
             for (Clan clan : allClans) {
                 ServerPlayerEntity leader = server.getPlayerManager().getPlayer(clan.getLeaderUuid());
+                Long wealth;
                 if (leader != null) {
-                    long wealth = CoinItems.countEnderChestWealth(leader);
-                    clanWealth.add(Map.entry(clan, wealth));
+                    wealth = CoinItems.countEnderChestWealth(leader);
+                    lastWealth.put(clan.getId(), wealth);
                 } else {
-                    // Leader offline — show with 0 or cached value
-                    // For now, skip offline leaders
-                    clanWealth.add(Map.entry(clan, 0L));
+                    wealth = lastWealth.get(clan.getId());
+                }
+                if (wealth != null) {
+                    clanWealth.add(Map.entry(clan, wealth));
                 }
             }
 

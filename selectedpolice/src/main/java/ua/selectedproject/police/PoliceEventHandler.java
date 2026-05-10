@@ -32,10 +32,14 @@ public class PoliceEventHandler {
         boundPositions.put(uuid, pos);
     }
 
+    /** Drop the in-memory frozen position for a player (e.g. on disconnect). */
+    public static void clearBoundPosition(UUID uuid) {
+        boundPositions.remove(uuid);
+    }
+
     public static void register() {
         registerTickEvents();
         registerInteractionBlocking();
-        registerPrisonZoneProtection();
     }
 
     private static void registerTickEvents() {
@@ -65,17 +69,16 @@ public class PoliceEventHandler {
 
                     Vec3d frozen = boundPositions.get(uuid);
                     if (frozen == null) {
-                        boundPositions.put(uuid, player.getPos());
-                    } else if (!status.isBound() && status.isLeashed()) {
-                        UUID lt = status.leashedTo();
-                        if (lt != null) {
-                            ServerPlayerEntity officer = server.getPlayerManager().getPlayer(lt);
-                            if (officer != null) {
-                                player.sendMessage(Text.literal(
-                                        "§c⛓ Вас веде §e" + officer.getName().getString()), true);
-                            }
+                        // Restore from prison spawn if available, otherwise use current position.
+                        // Without this fall-back, after a server restart the player is anchored
+                        // wherever they happened to log in.
+                        if (status.spawnWorld() != null) {
+                            frozen = new Vec3d(status.spawnX(), status.spawnY(), status.spawnZ());
+                        } else {
+                            frozen = player.getPos();
                         }
-                    }     else if (doDistanceCheck && player.squaredDistanceTo(frozen) > 0.25) {
+                        boundPositions.put(uuid, frozen);
+                    } else if (doDistanceCheck && player.squaredDistanceTo(frozen) > 0.25) {
                         player.requestTeleport(frozen.x, frozen.y, frozen.z);
                     }
 
@@ -85,6 +88,16 @@ public class PoliceEventHandler {
                         long mins = remaining / 60, secs = remaining % 60;
                         player.sendMessage(Text.literal(
                                 String.format("§c⛓ Прив'язаний: §f%d хв. %02d с.", mins, secs)), true);
+                    }
+                } else if (status.isLeashed()) {
+                    // Leashed (but not bound): show "being led" actionbar.
+                    UUID lt = status.leashedTo();
+                    if (lt != null) {
+                        ServerPlayerEntity officer = server.getPlayerManager().getPlayer(lt);
+                        if (officer != null) {
+                            player.sendMessage(Text.literal(
+                                    "§c⛓ Вас веде §e" + officer.getName().getString()), true);
+                        }
                     }
                 }
 
@@ -159,35 +172,55 @@ public class PoliceEventHandler {
             return ActionResult.PASS;
         });
 
+        // Single block-break listener that handles both restraint check AND prison-zone protection
         PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, be) -> {
             if (!(world instanceof ServerWorld)) return true;
             PoliceDatabase db = PoliceDatabase.getInstance();
             if (db == null || !(player instanceof ServerPlayerEntity sp)) return true;
-            if (isRestrained(db, sp.getUuid())) {
+
+            UUID uuid = sp.getUuid();
+            if (isRestrained(db, uuid)) {
                 sp.sendMessage(Text.literal("§cВи не можете руйнувати, поки прив'язані."), true);
                 return false;
             }
-            return true;
-        });
-    }
 
-    private static void registerPrisonZoneProtection() {
-        // Caught players cannot break blocks inside prison zones
-        PlayerBlockBreakEvents.BEFORE.register((world, player, pos, state, blockEntity) -> {
-            if (!(world instanceof ServerWorld)) return true;
-            PoliceDatabase db = PoliceDatabase.getInstance();
-            if (db == null || !(player instanceof ServerPlayerEntity sp)) return true;
-            if (!db.isCaught(sp.getUuid()) && !db.isBound(sp.getUuid())) return true;
-
-            String worldName = world.getRegistryKey().getValue().toString();
-            List<PrisonZone> zones = db.getAllPrisonZones();
-            for (PrisonZone zone : zones) {
-                if (zone.contains(worldName, pos.getX(), pos.getY(), pos.getZ())) {
-                    sp.sendMessage(Text.literal("§cВи не можете руйнувати блоки у зоні в'язниці."), true);
-                    return false;
+            // Caught players (post-jail, no longer bound but still serving) cannot
+            // break blocks inside ANY prison zone.
+            if (db.isCaught(uuid) || db.isBound(uuid)) {
+                String worldName = world.getRegistryKey().getValue().toString();
+                for (PrisonZone zone : db.getAllPrisonZones()) {
+                    if (zone.contains(worldName, pos.getX(), pos.getY(), pos.getZ())) {
+                        sp.sendMessage(Text.literal("§cВи не можете руйнувати блоки у зоні в'язниці."), true);
+                        return false;
+                    }
                 }
             }
+
             return true;
+        });
+
+        // Block placement protection inside prison zones (caught/bound players)
+        UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+            if (world.isClient()) return ActionResult.PASS;
+            if (!(player instanceof ServerPlayerEntity sp)) return ActionResult.PASS;
+            PoliceDatabase db = PoliceDatabase.getInstance();
+            if (db == null) return ActionResult.PASS;
+            if (!db.isCaught(sp.getUuid()) && !db.isBound(sp.getUuid())) return ActionResult.PASS;
+
+            // Only intervene if the player's hand stack is a placeable block.
+            net.minecraft.item.ItemStack stack = sp.getStackInHand(hand);
+            if (!(stack.getItem() instanceof net.minecraft.item.BlockItem)) return ActionResult.PASS;
+
+            // Compute the position the new block would be placed at (offset by hit side).
+            net.minecraft.util.math.BlockPos placeAt = hitResult.getBlockPos().offset(hitResult.getSide());
+            String worldName = world.getRegistryKey().getValue().toString();
+            for (PrisonZone zone : db.getAllPrisonZones()) {
+                if (zone.contains(worldName, placeAt.getX(), placeAt.getY(), placeAt.getZ())) {
+                    sp.sendMessage(Text.literal("§cВи не можете розміщувати блоки у зоні в'язниці."), true);
+                    return ActionResult.FAIL;
+                }
+            }
+            return ActionResult.PASS;
         });
     }
 

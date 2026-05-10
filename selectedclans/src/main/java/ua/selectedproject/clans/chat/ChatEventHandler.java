@@ -50,7 +50,7 @@ public final class ChatEventHandler {
 
     private static Text buildLine(ServerPlayerEntity sender, SignedMessage message) {
         DatabaseManager db = DatabaseManager.getInstance();
-        Clan clan = db != null ? db.getClanByPlayer(sender.getUuid()) : null;
+        Clan clan = ClanCache.getClan(sender.getUuid());
 
         MutableText line = Text.empty();
 
@@ -58,7 +58,9 @@ public final class ChatEventHandler {
         if (clan != null) {
             CoreConfig config = CoreConfig.getInstance();
             String tagText = String.format(config.clanTagFormat, clan.getTag());
-            MutableText clanTag = Text.literal(config.clanTagColor + tagText + "§r ")
+            // Sanitize the configured colour code: take only a leading "§<x>" pair if present.
+            String color = sanitizeColor(config.clanTagColor);
+            MutableText clanTag = Text.literal(color + tagText + "§r ")
                     .styled(style -> style
                             .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
                                     "/clan info " + clan.getTag()))
@@ -85,6 +87,19 @@ public final class ChatEventHandler {
         line.append(message.getContent());
 
         return line;
+    }
+
+    /**
+     * Reduce a user-supplied tag-colour string to a single legal Minecraft formatting
+     * code. We accept exactly "§x" (where x is 0-9, a-f, k-o, or r); anything else
+     * — empty, garbage, multiple codes — falls back to gold.
+     */
+    private static String sanitizeColor(String raw) {
+        if (raw == null || raw.length() < 2 || raw.charAt(0) != '§') return "§6";
+        char c = Character.toLowerCase(raw.charAt(1));
+        boolean valid = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')
+                || (c >= 'k' && c <= 'o') || c == 'r';
+        return valid ? "§" + c : "§6";
     }
 
     private static Text buildClanHoverText(Clan clan, DatabaseManager db) {

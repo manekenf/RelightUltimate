@@ -17,7 +17,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * On first join, teleport the player to the hub dimension.
  * Only active when enableHubDimension is true in config.
  */
-@Mixin(PlayerManager.class)
+@Mixin(value = PlayerManager.class, priority = 1000)
 public abstract class SpawnMixin {
 
     @Inject(method = "onPlayerConnect", at = @At("TAIL"))

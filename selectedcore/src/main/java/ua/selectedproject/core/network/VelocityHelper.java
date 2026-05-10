@@ -1,6 +1,5 @@
 package ua.selectedproject.core.network;
 
-import ua.selectedproject.core.SelectedCore;
 import ua.selectedproject.core.config.CoreConfig;
 import net.minecraft.server.network.ServerPlayerEntity;
 import org.slf4j.Logger;
@@ -8,68 +7,93 @@ import org.slf4j.LoggerFactory;
 
 import java.io.ByteArrayOutputStream;
 import java.io.DataOutputStream;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
- * Handles cross-server teleportation via Velocity's BungeeCord plugin messaging channel.
- * Uses Bukkit API through Arclight for reliable packet delivery.
- * Falls back to raw Netty if Bukkit is not available.
+ * Cross-server messaging via Velocity's BungeeCord plugin-messaging channel.
+ * Requires Arclight (or another Bukkit-compatible loader): we relay through Bukkit's
+ * Messenger API. The previous Netty-based fallback was removed because the
+ * CustomPayload codec was never registered, so it could only ever throw.
  */
 public class VelocityHelper {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedCore/Velocity");
+    private static final String BUNGEE_CHANNEL = "BungeeCord";
+
     private static boolean bukkitAvailable = false;
     private static Object bukkitPlugin = null;
+    private static Object messenger = null;
+    private static final Set<String> registeredChannels = new HashSet<>();
 
-    /**
-     * Initialize the BungeeCord messaging channel.
-     * Must be called after the server has started (not during mod init).
-     */
     public static void init() {
         try {
-            // Register the BungeeCord channel via Bukkit API (Arclight provides this)
             Class<?> bukkit = Class.forName("org.bukkit.Bukkit");
             Object server = bukkit.getMethod("getServer").invoke(null);
-            Object messenger = server.getClass().getMethod("getMessenger").invoke(server);
+            messenger = server.getClass().getMethod("getMessenger").invoke(server);
 
-            // Get any plugin to use as the channel owner
             Object pluginManager = bukkit.getMethod("getPluginManager").invoke(null);
             Object[] plugins = (Object[]) pluginManager.getClass().getMethod("getPlugins").invoke(pluginManager);
 
-            if (plugins.length > 0) {
-                bukkitPlugin = plugins[0]; // Use the first available plugin
-
-                // Register outgoing channel
-                messenger.getClass().getMethod("registerOutgoingPluginChannel",
-                        Class.forName("org.bukkit.plugin.Plugin"), String.class)
-                        .invoke(messenger, bukkitPlugin, "BungeeCord");
-
-                bukkitAvailable = true;
-                LOGGER.info("BungeeCord channel registered via Bukkit API (plugin: {})", 
-                        bukkitPlugin.getClass().getSimpleName());
-            } else {
-                LOGGER.warn("No Bukkit plugins available for channel registration");
+            bukkitPlugin = pickHolderPlugin(plugins);
+            if (bukkitPlugin == null) {
+                LOGGER.warn("No Bukkit plugins available for channel registration; cross-server messaging disabled");
+                return;
             }
+
+            registerOutgoing(BUNGEE_CHANNEL);
+            registerOutgoing(CoreConfig.getInstance().velocityChannel);
+
+            bukkitAvailable = true;
+            LOGGER.info("BungeeCord channel registered via Bukkit API (holder plugin: {})",
+                    bukkitPlugin.getClass().getSimpleName());
         } catch (Exception e) {
-            LOGGER.warn("Bukkit API not available, cross-server teleportation may not work: {}", e.getMessage());
+            LOGGER.warn("Bukkit API not available, cross-server messaging disabled: {}", e.getMessage());
         }
     }
 
     /**
-     * Send a player to another server via Velocity.
+     * Pick a stable plugin to own the channel registration. Prefer our own
+     * PapiBridge if present, otherwise use the first enabled plugin.
      */
+    private static Object pickHolderPlugin(Object[] plugins) throws Exception {
+        Object firstEnabled = null;
+        for (Object plugin : plugins) {
+            if (plugin == null) continue;
+            String name = (String) plugin.getClass().getMethod("getName").invoke(plugin);
+            boolean enabled = (boolean) plugin.getClass().getMethod("isEnabled").invoke(plugin);
+            if (!enabled) continue;
+            if ("PapiBridge".equalsIgnoreCase(name) || "RelightPapiBridge".equalsIgnoreCase(name)) {
+                return plugin;
+            }
+            if (firstEnabled == null) firstEnabled = plugin;
+        }
+        return firstEnabled;
+    }
+
+    private static void registerOutgoing(String channel) {
+        if (channel == null || channel.isEmpty() || registeredChannels.contains(channel)) return;
+        try {
+            messenger.getClass().getMethod("registerOutgoingPluginChannel",
+                    Class.forName("org.bukkit.plugin.Plugin"), String.class)
+                    .invoke(messenger, bukkitPlugin, channel);
+            registeredChannels.add(channel);
+        } catch (Exception e) {
+            LOGGER.error("Failed to register outgoing channel '{}'", channel, e);
+        }
+    }
+
     public static void sendToServer(ServerPlayerEntity player, String serverName) {
+        if (!bukkitAvailable) {
+            LOGGER.warn("Cannot send {} to '{}': Bukkit messaging unavailable",
+                    player.getName().getString(), serverName);
+            return;
+        }
         try {
             ByteArrayOutputStream msgBytes = new ByteArrayOutputStream();
             DataOutputStream msgOut = new DataOutputStream(msgBytes);
             msgOut.writeUTF("Connect");
             msgOut.writeUTF(serverName);
-            byte[] data = msgBytes.toByteArray();
-
-            if (bukkitAvailable && bukkitPlugin != null) {
-                sendViaBukkit(player, data);
-            } else {
-                sendViaNetty(player, data);
-            }
-
+            sendViaBukkit(player, BUNGEE_CHANNEL, msgBytes.toByteArray());
             LOGGER.info("Sending {} to server '{}'", player.getName().getString(), serverName);
         } catch (Exception e) {
             LOGGER.error("Failed to send player to server '{}'", serverName, e);
@@ -77,33 +101,31 @@ public class VelocityHelper {
     }
 
     /**
-     * Send via Bukkit plugin messaging (most reliable on Arclight).
+     * Send raw bytes on a custom plugin-messaging channel. Used for cross-server
+     * signalling (e.g. resource world OPEN/CLOSE).
      */
-    private static void sendViaBukkit(ServerPlayerEntity player, byte[] data) {
+    public static boolean sendCustomChannel(ServerPlayerEntity relay, String channel, byte[] data) {
+        if (!bukkitAvailable) return false;
+        registerOutgoing(channel);
         try {
-            Object craftPlayer = player.getClass().getMethod("getBukkitEntity").invoke(player);
-            craftPlayer.getClass().getMethod("sendPluginMessage",
-                    Class.forName("org.bukkit.plugin.Plugin"),
-                    String.class, byte[].class)
-                    .invoke(craftPlayer, bukkitPlugin, "BungeeCord", data);
+            sendViaBukkit(relay, channel, data);
+            return true;
         } catch (Exception e) {
-            LOGGER.error("Bukkit send failed, trying Netty fallback", e);
-            sendViaNetty(player, data);
+            LOGGER.error("Failed to send on channel '{}'", channel, e);
+            return false;
         }
     }
 
-    /**
-     * Send via raw Netty channel (fallback for non-Arclight servers).
-     */
-    private static void sendViaNetty(ServerPlayerEntity player, byte[] data) {
-        try {
-            net.minecraft.util.Identifier channelId = net.minecraft.util.Identifier.of("bungeecord", "main");
-            player.networkHandler.sendPacket(
-                    new net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket(
-                            new RawPayload(channelId, data)));
-        } catch (Exception e) {
-            LOGGER.error("Netty fallback also failed", e);
-        }
+    public static boolean isBukkitAvailable() {
+        return bukkitAvailable;
+    }
+
+    private static void sendViaBukkit(ServerPlayerEntity player, String channel, byte[] data) throws Exception {
+        Object craftPlayer = player.getClass().getMethod("getBukkitEntity").invoke(player);
+        craftPlayer.getClass().getMethod("sendPluginMessage",
+                Class.forName("org.bukkit.plugin.Plugin"),
+                String.class, byte[].class)
+                .invoke(craftPlayer, bukkitPlugin, channel, data);
     }
 
     public static void sendToHub(ServerPlayerEntity player) {
@@ -112,18 +134,5 @@ public class VelocityHelper {
 
     public static void sendToResourceWorld(ServerPlayerEntity player) {
         sendToServer(player, CoreConfig.getInstance().resourceWorldServerName);
-    }
-
-    /**
-     * Raw payload for Netty fallback — minimal implementation.
-     */
-    private record RawPayload(net.minecraft.util.Identifier id, byte[] data) 
-            implements net.minecraft.network.packet.CustomPayload {
-        public static final Id<RawPayload> ID = new Id<>(net.minecraft.util.Identifier.of("bungeecord", "main"));
-
-        @Override
-        public Id<? extends net.minecraft.network.packet.CustomPayload> getId() {
-            return ID;
-        }
     }
 }

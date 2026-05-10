@@ -117,29 +117,89 @@ public class HubPortalBlock extends Block {
         return false;
     }
 
+    /** Re-entrancy guard — prevents the cascade-remove from re-running for blocks
+     *  that are already being cleaned in the same wave. */
+    private static final ThreadLocal<Boolean> CLEANING = ThreadLocal.withInitial(() -> Boolean.FALSE);
+
     @Override
     public void onStateReplaced(BlockState state, World world, BlockPos pos, BlockState newState, boolean moved) {
-        if (!state.isOf(newState.getBlock())) {
-            // Portal block was removed — remove connected portal blocks
+        if (!state.isOf(newState.getBlock()) && !CLEANING.get()) {
+            // Portal block was removed — remove connected portal blocks via flood-fill
             removeConnectedPortals(world, pos, state.get(AXIS));
         }
         super.onStateReplaced(state, world, pos, newState, moved);
     }
 
+    /**
+     * Flood-fill from {@code start} (already removed) and remove every connected portal block
+     * up to a sane cap. Uses a single BFS pass instead of recursing through {@code onStateReplaced},
+     * which previously cascaded one stack frame per block.
+     */
     private static void removeConnectedPortals(World world, BlockPos start, Direction.Axis axis) {
         Direction widthDir = axis == Direction.Axis.X ? Direction.EAST : Direction.SOUTH;
+        Direction[] dirs = { widthDir, widthDir.getOpposite(), Direction.UP, Direction.DOWN };
 
-        for (Direction dir : new Direction[]{widthDir, widthDir.getOpposite(), Direction.UP, Direction.DOWN}) {
-            BlockPos pos = start.offset(dir);
-            for (int i = 0; i < 21; i++) {
-                if (world.getBlockState(pos).isOf(HUB_PORTAL_BLOCK)) {
-                    world.removeBlock(pos, false);
-                    pos = pos.offset(dir);
-                } else {
-                    break;
+        java.util.ArrayDeque<BlockPos> queue = new java.util.ArrayDeque<>();
+        java.util.HashSet<BlockPos> seen = new java.util.HashSet<>();
+        for (Direction d : dirs) queue.add(start.offset(d));
+
+        // Cap at 21*21 = 441 (largest valid portal interior), with a small margin.
+        final int cap = 500;
+        java.util.ArrayList<BlockPos> toRemove = new java.util.ArrayList<>();
+        while (!queue.isEmpty() && seen.size() < cap) {
+            BlockPos p = queue.poll();
+            if (!seen.add(p)) continue;
+            if (!world.getBlockState(p).isOf(HUB_PORTAL_BLOCK)) continue;
+            toRemove.add(p);
+            for (Direction d : dirs) queue.add(p.offset(d));
+        }
+
+        CLEANING.set(Boolean.TRUE);
+        try {
+            for (BlockPos p : toRemove) world.removeBlock(p, false);
+        } finally {
+            CLEANING.set(Boolean.FALSE);
+        }
+    }
+
+    /**
+     * Periodic sweep: portal blocks survive obsidian removal by TNT, lava, /setblock,
+     * etc. (the player-break event won't fire). Walk loaded chunks around online
+     * players and remove any portal block that no longer has at least one obsidian
+     * neighbour. Cheap when nothing is wrong; fixes orphaned portals when something is.
+     */
+    public static void validateLoadedPortals(net.minecraft.server.MinecraftServer server) {
+        if (HUB_PORTAL_BLOCK == null) return;
+        final int radius = 32;
+        for (ServerWorld world : server.getWorlds()) {
+            for (ServerPlayerEntity player : world.getPlayers()) {
+                BlockPos center = player.getBlockPos();
+                BlockPos.Mutable cursor = new BlockPos.Mutable();
+                for (int dx = -radius; dx <= radius; dx++) {
+                    for (int dy = -8; dy <= 8; dy++) {
+                        for (int dz = -radius; dz <= radius; dz++) {
+                            cursor.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
+                            if (!world.isChunkLoaded(cursor.getX() >> 4, cursor.getZ() >> 4)) continue;
+                            BlockState state = world.getBlockState(cursor);
+                            if (!state.isOf(HUB_PORTAL_BLOCK)) continue;
+                            if (!hasObsidianNeighbour(world, cursor, state.get(AXIS))) {
+                                world.removeBlock(cursor.toImmutable(), false);
+                            }
+                        }
+                    }
                 }
             }
         }
+    }
+
+    private static boolean hasObsidianNeighbour(World world, BlockPos pos, Direction.Axis axis) {
+        Direction widthDir = axis == Direction.Axis.X ? Direction.EAST : Direction.SOUTH;
+        Direction[] dirs = { widthDir, widthDir.getOpposite(), Direction.UP, Direction.DOWN };
+        for (Direction d : dirs) {
+            BlockState n = world.getBlockState(pos.offset(d));
+            if (n.isOf(net.minecraft.block.Blocks.OBSIDIAN) || n.isOf(HUB_PORTAL_BLOCK)) return true;
+        }
+        return false;
     }
 
     public static void register() {

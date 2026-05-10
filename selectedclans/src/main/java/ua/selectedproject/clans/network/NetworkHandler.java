@@ -87,15 +87,13 @@ public class NetworkHandler {
     // ==================== S2C PAYLOADS (Server -> Client) ====================
 
     /**
-     * Server tells client to open clan creation screen.
+     * Server tells client to open clan creation screen. No payload data needed.
      */
-    public record OpenClanCreateScreenPayload(boolean dummy) implements CustomPayload {
+    public record OpenClanCreateScreenPayload() implements CustomPayload {
+        public static final OpenClanCreateScreenPayload INSTANCE = new OpenClanCreateScreenPayload();
         public static final Id<OpenClanCreateScreenPayload> ID = new Id<>(OPEN_CLAN_CREATE_SCREEN);
         public static final PacketCodec<RegistryByteBuf, OpenClanCreateScreenPayload> CODEC =
-                PacketCodec.tuple(
-                        PacketCodecs.BOOL, OpenClanCreateScreenPayload::dummy,
-                        OpenClanCreateScreenPayload::new
-                );
+                PacketCodec.unit(INSTANCE);
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
 
@@ -132,14 +130,38 @@ public class NetworkHandler {
     }
 
     /**
-     * Server sends serialized member list (pipe-delimited entries: uuid|name).
+     * One row in a member sync. Serialized as (uuid_string, name).
      */
-    public record ClanMembersSyncPayload(String membersData) implements CustomPayload {
+    public record MemberEntry(String uuid, String name) {
+        public static final PacketCodec<RegistryByteBuf, MemberEntry> CODEC =
+                PacketCodec.of(
+                        (value, buf) -> {
+                            buf.writeString(value.uuid);
+                            buf.writeString(value.name);
+                        },
+                        buf -> new MemberEntry(buf.readString(), buf.readString())
+                );
+    }
+
+    /**
+     * Server sends member list as a structured list — replaces the old pipe-delimited
+     * string, which would truncate (32767-char STRING cap) and was fragile against
+     * names containing '|' or ';'.
+     */
+    public record ClanMembersSyncPayload(java.util.List<MemberEntry> members) implements CustomPayload {
         public static final Id<ClanMembersSyncPayload> ID = new Id<>(CLAN_MEMBERS_SYNC);
         public static final PacketCodec<RegistryByteBuf, ClanMembersSyncPayload> CODEC =
-                PacketCodec.tuple(
-                        PacketCodecs.STRING, ClanMembersSyncPayload::membersData,
-                        ClanMembersSyncPayload::new
+                PacketCodec.of(
+                        (value, buf) -> {
+                            buf.writeVarInt(value.members.size());
+                            for (MemberEntry m : value.members) MemberEntry.CODEC.encode(buf, m);
+                        },
+                        buf -> {
+                            int n = buf.readVarInt();
+                            java.util.List<MemberEntry> list = new java.util.ArrayList<>(n);
+                            for (int i = 0; i < n; i++) list.add(MemberEntry.CODEC.decode(buf));
+                            return new ClanMembersSyncPayload(list);
+                        }
                 );
         @Override public Id<? extends CustomPayload> getId() { return ID; }
     }
@@ -199,13 +221,8 @@ public class NetworkHandler {
         List<ClanMember> members = db.getClanMembers(clan.getId());
         int memberCount = members.size();
 
-        // Calculate rank (by member count)
-        var topClans = db.getTopClansBySize(100);
-        int rank = 1;
-        for (var entry : topClans) {
-            if (entry.getKey().getId() == clan.getId()) break;
-            rank++;
-        }
+        // Exact rank from DB — no top-100 truncation issue.
+        int rank = db.getClanSizeRank(clan.getId());
 
         // Send clan data
         ServerPlayNetworking.send(player, new ClanDataSyncPayload(
@@ -215,13 +232,10 @@ public class NetworkHandler {
                 memberCount, rank
         ));
 
-        // Send member list as pipe-delimited string: "uuid|name;uuid|name;..."
-        StringBuilder sb = new StringBuilder();
-        for (int i = 0; i < members.size(); i++) {
-            ClanMember m = members.get(i);
-            if (i > 0) sb.append(";");
-            sb.append(m.getPlayerUuid().toString()).append("|").append(m.getPlayerName());
+        java.util.List<MemberEntry> entries = new java.util.ArrayList<>(members.size());
+        for (ClanMember m : members) {
+            entries.add(new MemberEntry(m.getPlayerUuid().toString(), m.getPlayerName()));
         }
-        ServerPlayNetworking.send(player, new ClanMembersSyncPayload(sb.toString()));
+        ServerPlayNetworking.send(player, new ClanMembersSyncPayload(entries));
     }
 }

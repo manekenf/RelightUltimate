@@ -11,7 +11,7 @@ import java.nio.file.*;
 public class CoreConfig {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedCore/Config");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static CoreConfig instance;
+    private static volatile CoreConfig instance;
 
     // ==================== GENERAL ====================
     public String language = "uk"; // "uk" or "en"
@@ -60,8 +60,17 @@ public class CoreConfig {
     public long discordAdminChannelId = 0L;
     public String discordCommandPrefix = "/";
 
+    // ==================== POLICE ====================
+    public long pvpCooldownSeconds = 7L * 24 * 3600; // 1 week
+    public int prisonMaxZonesPerOfficer = 10;
+    public int prisonMaxZoneVolume = 50_000;
+    public int prisonMinZoneVolume = 8;
+    /** When true, scoreboard prefixes use unicode PUA glyphs (require resource pack);
+     *  otherwise fall back to plain ASCII labels that always render. */
+    public boolean useIconGlyphs = false;
+
     // ==================== VELOCITY ====================
-    public String velocityChannel = "clansmod:main";
+    public String velocityChannel = "selectedcore:main";
     public String mainServerName = "hub"; // Velocity name for this server
 
     // ==================== PERSISTENCE ====================
@@ -71,30 +80,94 @@ public class CoreConfig {
     }
 
     public static CoreConfig load(Path configDir) {
-        Path configFile = configDir.resolve("clansmod.json");
+        Path configFile = configDir.resolve("selectedcore.json");
+        Path legacyFile = configDir.resolve("clansmod.json"); // pre-rename name
+
+        // One-time migration: if the new file does not exist but the legacy one does, rename it.
+        if (!Files.exists(configFile) && Files.exists(legacyFile)) {
+            try {
+                Files.move(legacyFile, configFile);
+                LOGGER.info("Migrated legacy config {} -> {}", legacyFile.getFileName(), configFile.getFileName());
+            } catch (IOException e) {
+                LOGGER.warn("Could not migrate legacy config; will read it in place: {}", e.getMessage());
+                configFile = legacyFile;
+            }
+        }
+
+        // Start from defaults, then merge any saved values onto them.
+        CoreConfig merged = new CoreConfig();
 
         if (Files.exists(configFile)) {
             try (Reader reader = Files.newBufferedReader(configFile)) {
-                instance = GSON.fromJson(reader, CoreConfig.class);
-                LOGGER.info("Config loaded from {}", configFile);
+                CoreConfig loaded = GSON.fromJson(reader, CoreConfig.class);
+                if (loaded != null) {
+                    mergeNonNull(loaded, merged);
+                    LOGGER.info("Config loaded from {}", configFile);
+                } else {
+                    LOGGER.warn("Config at {} parsed to null, using defaults", configFile);
+                }
             } catch (IOException e) {
                 LOGGER.error("Failed to read config, using defaults", e);
-                instance = new CoreConfig();
             }
         } else {
-            instance = new CoreConfig();
             LOGGER.info("No config found, generating defaults");
         }
 
-        // Always save to ensure new fields are written
+        instance = merged;
         save(configDir);
         return instance;
+    }
+
+    /**
+     * Copy non-null fields from {@code src} onto {@code dst}. Primitive defaults are
+     * also kept on {@code dst} only if the loaded value matches the JVM zero-value
+     * for that field — but we treat any deserialized primitive as authoritative,
+     * since users may legitimately want zero. For fields newly added (and therefore
+     * absent in the saved JSON), Gson leaves them at the JVM zero — but those fields
+     * were initialized in {@code dst} by the field-initializer, so {@code dst}
+     * already has the correct default. We only overwrite from {@code src} when it
+     * was explicitly present.
+     * <p>
+     * Implementation note: Gson can't tell "field absent" from "field=0" for
+     * primitives. To work around that we use reflection to copy fields that are
+     * either non-null (objects) or whose default (in a fresh instance) differs from
+     * the loaded value (primitives).
+     */
+    private static void mergeNonNull(CoreConfig src, CoreConfig dst) {
+        CoreConfig defaults = new CoreConfig();
+        for (java.lang.reflect.Field f : CoreConfig.class.getDeclaredFields()) {
+            int mods = f.getModifiers();
+            if (java.lang.reflect.Modifier.isStatic(mods) || java.lang.reflect.Modifier.isFinal(mods)) continue;
+            f.setAccessible(true);
+            try {
+                Object srcVal = f.get(src);
+                Object defVal = f.get(defaults);
+                if (srcVal == null) continue;
+                // For primitives, Gson sets the zero value when the field is missing.
+                // If the loaded value equals the zero AND the default is non-zero,
+                // we can't distinguish "user wrote 0" from "field absent" — keep the default.
+                // Otherwise apply the loaded value.
+                if (srcVal.equals(getZero(f.getType())) && !srcVal.equals(defVal)) continue;
+                f.set(dst, srcVal);
+            } catch (IllegalAccessException ignored) {}
+        }
+    }
+
+    private static Object getZero(Class<?> type) {
+        if (type == int.class)     return 0;
+        if (type == long.class)    return 0L;
+        if (type == boolean.class) return false;
+        if (type == double.class)  return 0.0;
+        if (type == float.class)   return 0.0f;
+        if (type == short.class)   return (short) 0;
+        if (type == byte.class)    return (byte) 0;
+        return null;
     }
 
     public static void save(Path configDir) {
         try {
             Files.createDirectories(configDir);
-            Path configFile = configDir.resolve("clansmod.json");
+            Path configFile = configDir.resolve("selectedcore.json");
             try (Writer writer = Files.newBufferedWriter(configFile)) {
                 GSON.toJson(instance, writer);
             }

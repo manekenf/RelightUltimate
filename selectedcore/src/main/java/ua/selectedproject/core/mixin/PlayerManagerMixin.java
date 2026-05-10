@@ -13,7 +13,7 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 /**
  * Update player name cache in database when they join.
  */
-@Mixin(PlayerManager.class)
+@Mixin(value = PlayerManager.class, priority = 1000)
 public abstract class PlayerManagerMixin {
 
     @Inject(method = "onPlayerConnect", at = @At("TAIL"))

@@ -20,7 +20,33 @@ public class PoliceDatabase {
     private static PoliceDatabase instance;
     private Connection connection;
 
+    /**
+     * Per-UUID TTL cache for PvP status. Tick events read this hundreds of times per
+     * second across all online players; without a cache every tick would spawn a
+     * row-existence INSERT-OR-IGNORE plus a SELECT (see {@link #getPvpStatus}). Writes
+     * invalidate the entry so cached reads see fresh state on the very next tick.
+     */
+    private static final long PVP_CACHE_TTL_MS = 1000L;
+    private final java.util.concurrent.ConcurrentHashMap<UUID, CacheEntry> pvpCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+    private record CacheEntry(PlayerPvpStatus status, long fetchedAtMs) {}
+
+    /** Cache for /police on/off; same write-through pattern. */
+    private final java.util.concurrent.ConcurrentHashMap<UUID, Boolean> policeCache =
+            new java.util.concurrent.ConcurrentHashMap<>();
+
     private PoliceDatabase() {}
+
+    private void invalidate(UUID uuid) {
+        pvpCache.remove(uuid);
+    }
+
+    /** Drop cached entries for a player on disconnect. Stops the per-UUID cache from
+     *  growing unboundedly across server lifetime. */
+    public void clearCacheFor(UUID uuid) {
+        pvpCache.remove(uuid);
+        policeCache.remove(uuid);
+    }
 
     public static PoliceDatabase getInstance() {
         return instance;
@@ -115,7 +141,7 @@ public class PoliceDatabase {
 
     // ===================== PVP STATUS =====================
 
-    private void ensureRow(UUID uuid) {
+    private synchronized void ensureRow(UUID uuid) {
         String sql = "INSERT OR IGNORE INTO pvp_status (player_uuid) VALUES (?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
@@ -126,7 +152,19 @@ public class PoliceDatabase {
     }
 
     public PlayerPvpStatus getPvpStatus(UUID uuid) {
-        ensureRow(uuid);
+        long now = System.currentTimeMillis();
+        CacheEntry cached = pvpCache.get(uuid);
+        if (cached != null && now - cached.fetchedAtMs < PVP_CACHE_TTL_MS) {
+            return cached.status;
+        }
+        PlayerPvpStatus fresh = loadPvpStatus(uuid);
+        pvpCache.put(uuid, new CacheEntry(fresh, now));
+        return fresh;
+    }
+
+    private synchronized PlayerPvpStatus loadPvpStatus(UUID uuid) {
+        // Read-only path — does NOT INSERT-OR-IGNORE. If the row is absent, we return
+        // a default status. Writes are responsible for materialising the row.
         String sql = "SELECT * FROM pvp_status WHERE player_uuid = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
@@ -134,8 +172,12 @@ public class PoliceDatabase {
             if (rs.next()) return pvpStatusFromRs(rs);
         } catch (SQLException e) {
             LOGGER.error("Failed to get pvp status for {}", uuid, e);
+            return null;
         }
-        return null;
+        // Default row never written — return a synthetic "no status" entry so callers
+        // don't have to null-check separately.
+        return new PlayerPvpStatus(uuid, false, Instant.EPOCH, false, null, false, null,
+                null, false, null, false, null, null, 0, 64, 0);
     }
 
     private PlayerPvpStatus pvpStatusFromRs(ResultSet rs) throws SQLException {
@@ -216,7 +258,7 @@ public class PoliceDatabase {
     }
 
     /** Set PVP mode and record toggle timestamp. */
-    public void setPvp(UUID uuid, boolean pvp) {
+    public synchronized void setPvp(UUID uuid, boolean pvp) {
         ensureRow(uuid);
         String sql = "UPDATE pvp_status SET is_pvp = ?, last_toggle = ? WHERE player_uuid = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -227,9 +269,10 @@ public class PoliceDatabase {
         } catch (SQLException e) {
             LOGGER.error("Failed to set pvp for {}", uuid, e);
         }
+        invalidate(uuid);
     }
 
-    public void setCriminal(UUID uuid, boolean criminal) {
+    public synchronized void setCriminal(UUID uuid, boolean criminal) {
         ensureRow(uuid);
         String sql = "UPDATE pvp_status SET is_criminal = ?, criminal_until = ? WHERE player_uuid = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -241,13 +284,14 @@ public class PoliceDatabase {
         } catch (SQLException e) {
             LOGGER.error("Failed to set criminal for {}", uuid, e);
         }
+        invalidate(uuid);
     }
 
     /**
      * Clears all criminals whose criminal_until has passed.
      * Returns UUIDs of players whose criminal status was just cleared.
      */
-    public List<UUID> clearExpiredCriminals() {
+    public synchronized List<UUID> clearExpiredCriminals() {
         long now = Instant.now().getEpochSecond();
         List<UUID> expired = new ArrayList<>();
         String selectSql = "SELECT player_uuid FROM pvp_status WHERE is_criminal = 1 AND criminal_until IS NOT NULL AND criminal_until <= ?";
@@ -267,11 +311,12 @@ public class PoliceDatabase {
             } catch (SQLException e) {
                 LOGGER.error("Failed to clear expired criminals", e);
             }
+            for (UUID u : expired) invalidate(u);
         }
         return expired;
     }
 
-    public void setBound(UUID uuid, boolean bound, Instant until, UUID boundBy) {
+    public synchronized void setBound(UUID uuid, boolean bound, Instant until, UUID boundBy) {
         ensureRow(uuid);
         String sql = """
             UPDATE pvp_status SET is_bound = ?, bound_until = ?, bound_by = ?
@@ -286,9 +331,10 @@ public class PoliceDatabase {
         } catch (SQLException e) {
             LOGGER.error("Failed to set bound for {}", uuid, e);
         }
+        invalidate(uuid);
     }
 
-    public void setCaught(UUID uuid, boolean caught, UUID caughtBy) {
+    public synchronized void setCaught(UUID uuid, boolean caught, UUID caughtBy) {
         ensureRow(uuid);
         String sql = "UPDATE pvp_status SET is_caught = ?, caught_by = ? WHERE player_uuid = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -299,9 +345,10 @@ public class PoliceDatabase {
         } catch (SQLException e) {
             LOGGER.error("Failed to set caught for {}", uuid, e);
         }
+        invalidate(uuid);
     }
 
-    public void setLeashed(UUID uuid, boolean leashed, UUID leashedTo) {
+    public synchronized void setLeashed(UUID uuid, boolean leashed, UUID leashedTo) {
         ensureRow(uuid);
         String sql = "UPDATE pvp_status SET is_leashed = ?, leashed_to = ? WHERE player_uuid = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -312,10 +359,11 @@ public class PoliceDatabase {
         } catch (SQLException e) {
             LOGGER.error("Failed to set leashed for {}", uuid, e);
         }
+        invalidate(uuid);
     }
 
     /** Set custom prison spawn for a caught player. */
-    public void setPrisonSpawn(UUID uuid, String world, double x, double y, double z) {
+    public synchronized void setPrisonSpawn(UUID uuid, String world, double x, double y, double z) {
         ensureRow(uuid);
         String sql = "UPDATE pvp_status SET spawn_world = ?, spawn_x = ?, spawn_y = ?, spawn_z = ? WHERE player_uuid = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -328,10 +376,11 @@ public class PoliceDatabase {
         } catch (SQLException e) {
             LOGGER.error("Failed to set prison spawn for {}", uuid, e);
         }
+        invalidate(uuid);
     }
 
     /** Fully release a player from custody (clears bound, caught, leashed, criminal). */
-    public void releaseFromCustody(UUID uuid) {
+    public synchronized void releaseFromCustody(UUID uuid) {
         ensureRow(uuid);
         String sql = """
             UPDATE pvp_status SET
@@ -346,11 +395,20 @@ public class PoliceDatabase {
         } catch (SQLException e) {
             LOGGER.error("Failed to release from custody {}", uuid, e);
         }
+        invalidate(uuid);
     }
 
     // ===================== POLICE STATUS =====================
 
     public boolean isPolice(UUID uuid) {
+        Boolean cached = policeCache.get(uuid);
+        if (cached != null) return cached;
+        boolean fresh = loadIsPolice(uuid);
+        policeCache.put(uuid, fresh);
+        return fresh;
+    }
+
+    private synchronized boolean loadIsPolice(UUID uuid) {
         String sql = "SELECT is_police FROM police_status WHERE player_uuid = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
@@ -362,7 +420,7 @@ public class PoliceDatabase {
         return false;
     }
 
-    public void setPolice(UUID uuid, boolean police) {
+    public synchronized void setPolice(UUID uuid, boolean police) {
         String sql = "INSERT OR REPLACE INTO police_status (player_uuid, is_police) VALUES (?, ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, uuid.toString());
@@ -371,10 +429,11 @@ public class PoliceDatabase {
         } catch (SQLException e) {
             LOGGER.error("Failed to set police for {}", uuid, e);
         }
+        policeCache.put(uuid, police);
     }
 
     /** Set PVP without touching last_toggle — for admin overrides. */
-    public void setPvpKeepCooldown(UUID uuid, boolean pvp) {
+    public synchronized void setPvpKeepCooldown(UUID uuid, boolean pvp) {
         ensureRow(uuid);
         String sql = "UPDATE pvp_status SET is_pvp = ? WHERE player_uuid = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -384,9 +443,10 @@ public class PoliceDatabase {
         } catch (SQLException e) {
             LOGGER.error("Failed to set pvp (keep cooldown) for {}", uuid, e);
         }
+        invalidate(uuid);
     }
 
-    public List<UUID> getAllLeashedPlayers() {
+    public synchronized List<UUID> getAllLeashedPlayers() {
         String sql = "SELECT player_uuid FROM pvp_status WHERE is_leashed = 1";
         List<UUID> out = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement(sql);
@@ -400,7 +460,7 @@ public class PoliceDatabase {
 
     // ===================== PRISON ZONES =====================
 
-    public PrisonZone addPrisonZone(UUID ownerUuid, String world, int x1, int y1, int z1, int x2, int y2, int z2) {
+    public synchronized PrisonZone addPrisonZone(UUID ownerUuid, String world, int x1, int y1, int z1, int x2, int y2, int z2) {
         String sql = """
             INSERT INTO prison_zones (owner_uuid, world, x1, y1, z1, x2, y2, z2)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -413,6 +473,7 @@ public class PoliceDatabase {
             ps.executeUpdate();
             ResultSet keys = ps.getGeneratedKeys();
             if (keys.next()) {
+                invalidateZonesCache();
                 return new PrisonZone(keys.getInt(1), ownerUuid, world, x1, y1, z1, x2, y2, z2);
             }
         } catch (SQLException e) {
@@ -421,7 +482,7 @@ public class PoliceDatabase {
         return null;
     }
 
-    public List<PrisonZone> getPrisonZonesByOwner(UUID ownerUuid) {
+    public synchronized List<PrisonZone> getPrisonZonesByOwner(UUID ownerUuid) {
         String sql = "SELECT * FROM prison_zones WHERE owner_uuid = ? ORDER BY id ASC";
         List<PrisonZone> zones = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -434,7 +495,27 @@ public class PoliceDatabase {
         return zones;
     }
 
+    /** Cache for {@link #getAllPrisonZones()} — block-break/use callbacks call this
+     *  per-event for caught/bound players, and zone data changes only on admin commands. */
+    private volatile List<PrisonZone> allZonesCache = null;
+    private volatile long allZonesCacheAt = 0L;
+    private static final long ZONES_CACHE_TTL_MS = 5_000L;
+
     public List<PrisonZone> getAllPrisonZones() {
+        long now = System.currentTimeMillis();
+        List<PrisonZone> cached = allZonesCache;
+        if (cached != null && now - allZonesCacheAt < ZONES_CACHE_TTL_MS) {
+            return cached;
+        }
+        return reloadAllPrisonZones(now);
+    }
+
+    private synchronized List<PrisonZone> reloadAllPrisonZones(long now) {
+        // Re-check inside lock to avoid duplicate concurrent loads.
+        List<PrisonZone> cached = allZonesCache;
+        if (cached != null && now - allZonesCacheAt < ZONES_CACHE_TTL_MS) {
+            return cached;
+        }
         String sql = "SELECT * FROM prison_zones";
         List<PrisonZone> zones = new ArrayList<>();
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
@@ -443,21 +524,29 @@ public class PoliceDatabase {
         } catch (SQLException e) {
             LOGGER.error("Failed to get all prison zones", e);
         }
+        allZonesCache = zones;
+        allZonesCacheAt = now;
         return zones;
     }
 
-    public boolean removeLastZoneByOwner(UUID ownerUuid) {
+    private void invalidateZonesCache() {
+        allZonesCache = null;
+    }
+
+    public synchronized boolean removeLastZoneByOwner(UUID ownerUuid) {
         String sql = "DELETE FROM prison_zones WHERE id = (SELECT MAX(id) FROM prison_zones WHERE owner_uuid = ?)";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, ownerUuid.toString());
-            return ps.executeUpdate() > 0;
+            int affected = ps.executeUpdate();
+            if (affected > 0) invalidateZonesCache();
+            return affected > 0;
         } catch (SQLException e) {
             LOGGER.error("Failed to remove last prison zone for {}", ownerUuid, e);
         }
         return false;
     }
 
-    public int countZonesByOwner(UUID ownerUuid) {
+    public synchronized int countZonesByOwner(UUID ownerUuid) {
         String sql = "SELECT COUNT(*) FROM prison_zones WHERE owner_uuid = ?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setString(1, ownerUuid.toString());
@@ -469,15 +558,17 @@ public class PoliceDatabase {
         return 0;
     }
 
-    public boolean setZoneHome(int zoneId, double x, double y, double z) {
+    public synchronized boolean setZoneHome(int zoneId, double x, double y, double z) {
         String sql = "UPDATE prison_zones SET home_x=?, home_y=?, home_z=? WHERE id=?";
         try (PreparedStatement ps = connection.prepareStatement(sql)) {
             ps.setDouble(1,x); ps.setDouble(2,y); ps.setDouble(3,z); ps.setInt(4,zoneId);
-            return ps.executeUpdate() > 0;
+            boolean ok = ps.executeUpdate() > 0;
+            if (ok) invalidateZonesCache();
+            return ok;
         } catch (SQLException e) { LOGGER.error("setZoneHome failed", e); return false; }
     }
 
-    public PrisonZone getZoneById(int id) {
+    public synchronized PrisonZone getZoneById(int id) {
         try (PreparedStatement ps = connection.prepareStatement("SELECT * FROM prison_zones WHERE id=?")) {
             ps.setInt(1, id);
             ResultSet rs = ps.executeQuery();
@@ -500,7 +591,7 @@ public class PoliceDatabase {
         );
     }
 
-    public void close() {
+    public synchronized void close() {
         try {
             if (connection != null && !connection.isClosed()) {
                 connection.close();

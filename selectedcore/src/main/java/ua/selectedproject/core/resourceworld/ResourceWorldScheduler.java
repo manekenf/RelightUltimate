@@ -27,7 +27,7 @@ public class ResourceWorldScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedCore/ResourceWorld");
     private static final DateTimeFormatter TIME_FORMAT = DateTimeFormatter.ofPattern("dd.MM.yyyy-HH:mm");
 
-    private static ResourceWorldScheduler instance;
+    private static final ResourceWorldScheduler INSTANCE = new ResourceWorldScheduler();
 
     private Instant openTime;
     private Instant closeTime;
@@ -39,8 +39,7 @@ public class ResourceWorldScheduler {
     private Vec3d portalHologramPos = null;
 
     public static ResourceWorldScheduler getInstance() {
-        if (instance == null) instance = new ResourceWorldScheduler();
-        return instance;
+        return INSTANCE;
     }
 
     public void setPortalHologramPos(Vec3d pos) {
@@ -194,25 +193,26 @@ public class ResourceWorldScheduler {
 
     /**
      * Send a message to the resource world server via Velocity plugin messaging channel.
+     * Format: ACTION|nether_enabled|end_enabled
      */
     private void sendVelocityMessage(MinecraftServer server, String action) {
         CoreConfig config = CoreConfig.getInstance();
-        // Velocity plugin messaging requires a player to relay through.
-        // Format: ACTION|nether_enabled|end_enabled
         String payload = action + "|" + netherEnabled + "|" + endEnabled;
 
-        // Get any online player to send the plugin message through
         List<ServerPlayerEntity> players = server.getPlayerManager().getPlayerList();
-        if (!players.isEmpty()) {
-            ServerPlayerEntity relay = players.get(0);
-            net.minecraft.network.packet.s2c.common.CustomPayloadS2CPacket packet =
-                    null; // TODO: Build proper Velocity plugin message packet
-
-            // For now, log the intent — actual Velocity messaging needs the Velocity API
-            LOGGER.info("Velocity message: {} -> channel '{}', payload '{}'",
-                    config.resourceWorldServerName, config.velocityChannel, payload);
-        } else {
+        if (players.isEmpty()) {
             LOGGER.warn("No online players to relay Velocity message for: {}", action);
+            return;
+        }
+
+        ServerPlayerEntity relay = players.get(0);
+        boolean sent = ua.selectedproject.core.network.VelocityHelper.sendCustomChannel(
+                relay, config.velocityChannel, payload.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        if (sent) {
+            LOGGER.info("Velocity message sent on '{}': {}", config.velocityChannel, payload);
+        } else {
+            LOGGER.warn("Velocity message NOT sent (Bukkit unavailable): {}", payload);
         }
     }
 

@@ -18,7 +18,7 @@ import java.util.Map;
 public class CoreLocalization {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedCore/Lang");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().disableHtmlEscaping().create();
-    private static CoreLocalization instance;
+    private static volatile CoreLocalization instance;
 
     private Map<String, String> strings = new HashMap<>();
 
@@ -33,19 +33,33 @@ public class CoreLocalization {
         // Generate defaults if missing
         generateDefaults(langDir);
 
-        // Load selected language
-        Path langFile = langDir.resolve(language + ".json");
-        if (!Files.exists(langFile)) {
-            LOGGER.warn("Language file {} not found, falling back to uk", language);
-            langFile = langDir.resolve("uk.json");
-        }
+        // Load selected language; if the requested file is missing or unparseable, fall back
+        // to en.json, then to hardcoded Ukrainian defaults. Never fall back to the same file
+        // we just failed to read.
+        Path requested = langDir.resolve(language + ".json");
+        Path fallback = langDir.resolve("en.json");
 
+        if (tryLoad(requested)) return;
+        if (!requested.equals(fallback)) {
+            LOGGER.warn("Language file {} unavailable, falling back to en.json", requested);
+            if (tryLoad(fallback)) return;
+        }
+        LOGGER.warn("All language files unavailable, using hardcoded defaults");
+        instance.strings = getUkrainianDefaults();
+    }
+
+    /** Try to load a language file. Returns true on success, false on any failure. */
+    private static boolean tryLoad(Path langFile) {
+        if (!Files.exists(langFile)) return false;
         try (Reader reader = Files.newBufferedReader(langFile)) {
-            instance.strings = GSON.fromJson(reader, new TypeToken<Map<String, String>>() {}.getType());
-            LOGGER.info("Loaded {} language strings from {}", instance.strings.size(), langFile);
-        } catch (IOException e) {
-            LOGGER.error("Failed to load language file", e);
-            instance.strings = getUkrainianDefaults();
+            Map<String, String> loaded = GSON.fromJson(reader, new TypeToken<Map<String, String>>() {}.getType());
+            if (loaded == null) return false;
+            instance.strings = loaded;
+            LOGGER.info("Loaded {} language strings from {}", loaded.size(), langFile);
+            return true;
+        } catch (IOException | com.google.gson.JsonParseException e) {
+            LOGGER.error("Failed to load language file {}", langFile, e);
+            return false;
         }
     }
 
@@ -96,7 +110,9 @@ public class CoreLocalization {
 
         // ---- Clan Management ----
         m.put("clan.invite.sent", "Запрошення надіслано гравцю §e%s§r.");
-        m.put("clan.invite.received", "§6%s§r запрошує вас до клану §e%s§r! §a[Прийняти]§r §c[Відхилити]§r");
+        m.put("clan.invite.received", "§6%s§r запрошує вас до клану §e%s§r! ");
+        m.put("clan.invite.accept_hover", "§aПрийняти / Accept");
+        m.put("clan.invite.decline_hover", "§cВідхилити / Decline");
         m.put("clan.invite.accepted", "§a%s§r приєднався до клану!");
         m.put("clan.invite.declined", "%s відхилив запрошення.");
         m.put("clan.invite.player_offline", "Невірний нік");
@@ -120,6 +136,9 @@ public class CoreLocalization {
         m.put("chat.clan.format", "§8[§6Клан§8] §e%s§r: %s");
         m.put("chat.leader.format", "§8[§cЛідери§8] §e%s§r: %s");
         m.put("chat.admin.broadcast", "§8[§4Адмін§8] §r%s");
+        m.put("chat.not_in_clan", "§cВи не в клані.");
+        m.put("chat.leader_only", "§cТільки лідери кланів можуть користуватися цим чатом.");
+        m.put("chat.clan_not_found", "§cКлан не знайдено.");
 
         // ---- Clan Info Popup ----
         m.put("clan.info.header", "§6%s §8[§e%s§8]");
@@ -150,10 +169,19 @@ public class CoreLocalization {
         m.put("gui.manage.created_label", "Дата створення: %s");
         m.put("gui.manage.members_label", "Кількість гравців: %d");
 
+        // ---- Police (subset; remaining strings are still inline pending full migration) ----
+        m.put("police.unavailable", "§cСистема недоступна.");
+        m.put("police.player_offline", "§cГравець %s не в мережі.");
+        m.put("police.only_police", "§cТільки поліцейські можуть це робити.");
+        m.put("police.pvp_required", "§cПоліцейські можуть бути тільки гравці з увімкненим PVP.");
+        m.put("police.role_revoked_pve", "§7Поліцейський статус знято — він доступний лише в режимі PVP.");
+
         // ---- Discord ----
         m.put("discord.link.code", "Ваш код: §e%s§r. Введіть §6/discord link %s§r у Minecraft.");
         m.put("discord.link.success", "Акаунти успішно з'єднано!");
-        m.put("discord.link.invalid_code", "Невірний код.");
+        m.put("discord.link.invalid_code", "Невірний або прострочений код.");
+        m.put("discord.link.rate_limited", "§cЗабагато спроб. Спробуйте через годину.");
+        m.put("discord.link.already_linked", "§cАкаунт вже з'єднаний з іншим Minecraft-профілем.");
 
         // ---- Coins ----
         m.put("coins.give", "Видано %d x %s гравцю %s.");
@@ -179,7 +207,9 @@ public class CoreLocalization {
         m.put("clan.create.already_in_clan", "You are already in a clan! Leave your current clan first.");
 
         m.put("clan.invite.sent", "Invitation sent to player §e%s§r.");
-        m.put("clan.invite.received", "§6%s§r invites you to clan §e%s§r! §a[Accept]§r §c[Decline]§r");
+        m.put("clan.invite.received", "§6%s§r invites you to clan §e%s§r! ");
+        m.put("clan.invite.accept_hover", "§aAccept");
+        m.put("clan.invite.decline_hover", "§cDecline");
         m.put("clan.invite.accepted", "§a%s§r has joined the clan!");
         m.put("clan.invite.declined", "%s declined the invitation.");
         m.put("clan.invite.player_offline", "Invalid nickname");
@@ -199,6 +229,9 @@ public class CoreLocalization {
         m.put("chat.clan.format", "§8[§6Clan§8] §e%s§r: %s");
         m.put("chat.leader.format", "§8[§cLeaders§8] §e%s§r: %s");
         m.put("chat.admin.broadcast", "§8[§4Admin§8] §r%s");
+        m.put("chat.not_in_clan", "§cYou are not in a clan.");
+        m.put("chat.leader_only", "§cOnly clan leaders can use this chat.");
+        m.put("chat.clan_not_found", "§cClan not found.");
 
         m.put("clan.info.header", "§6%s §8[§e%s§8]");
         m.put("clan.info.created", "§7Created: §f%s");
@@ -226,9 +259,18 @@ public class CoreLocalization {
         m.put("gui.manage.created_label", "Created: %s");
         m.put("gui.manage.members_label", "Members: %d");
 
+        // ---- Police (subset; remaining strings are still inline pending full migration) ----
+        m.put("police.unavailable", "§cSystem unavailable.");
+        m.put("police.player_offline", "§cPlayer %s is not online.");
+        m.put("police.only_police", "§cOnly officers can do that.");
+        m.put("police.pvp_required", "§cOnly PVP-mode players can become officers.");
+        m.put("police.role_revoked_pve", "§7Officer status revoked — only PVP players may be officers.");
+
         m.put("discord.link.code", "Your code: §e%s§r. Type §6/discord link %s§r in Minecraft.");
         m.put("discord.link.success", "Accounts linked successfully!");
-        m.put("discord.link.invalid_code", "Invalid code.");
+        m.put("discord.link.invalid_code", "Invalid or expired code.");
+        m.put("discord.link.rate_limited", "§cToo many attempts. Try again in an hour.");
+        m.put("discord.link.already_linked", "§cThat Discord account is already linked to a Minecraft profile.");
 
         m.put("coins.give", "Gave %d x %s to %s.");
         m.put("coins.take", "Took %d x %s from %s.");

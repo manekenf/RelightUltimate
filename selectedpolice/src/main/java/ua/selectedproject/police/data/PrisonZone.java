@@ -33,10 +33,13 @@ public record PrisonZone(
 
     public boolean contains(String world, double x, double y, double z) {
         if (!this.world.equals(world)) return false;
+        // Half-open upper bound: a player whose continuous position is exactly
+        // (maxBlock+1).0 is *outside* the AABB (that's the next block over). Matches
+        // the int-coord variant: int x==maxBlock is the last block inside the zone.
         double minX = Math.min(x1, x2), maxX = Math.max(x1, x2) + 1.0;
         double minY = Math.min(y1, y2), maxY = Math.max(y1, y2) + 1.0;
         double minZ = Math.min(z1, z2), maxZ = Math.max(z1, z2) + 1.0;
-        return x >= minX && x <= maxX && y >= minY && y <= maxY && z >= minZ && z <= maxZ;
+        return x >= minX && x < maxX && y >= minY && y < maxY && z >= minZ && z < maxZ;
     }
 
     public int volume() {

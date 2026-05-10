@@ -3,7 +3,7 @@ plugins {
     id 'com.gradleup.shadow'
 }
 
-version = '1.0.0'
+version = project.papibridge_version
 base { archivesName = 'relight-papi-bridge' }
 
 repositories {
@@ -21,6 +21,8 @@ dependencies {
 
 shadowJar {
     archiveClassifier.set('')
+    // NOTE: keep this prefix in sync with DbAccess.RELOCATED_JDBC_CLASS — the runtime
+    // Class.forName(...) string must match what shadowJar relocated to.
     relocate 'org.sqlite', 'ua.selectedproject.papibridge.libs.sqlite'
 }
 

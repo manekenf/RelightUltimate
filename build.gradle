@@ -27,8 +27,9 @@ subprojects {
     }
 }
 
-// Fabric-specific config — applies only to the three Fabric subprojects.
-configure(subprojects.findAll { it.name in ['selectedcore', 'selectedclans', 'selectedpolice'] }) {
+// Fabric-specific config — applies to every subproject *except* papibridge (a Bukkit plugin).
+// Adding a new Fabric subproject? It picks up this config automatically.
+configure(subprojects.findAll { it.name != 'papibridge' }) {
     apply plugin: 'fabric-loom'
     apply plugin: 'maven-publish'
 
@@ -53,7 +54,12 @@ configure(subprojects.findAll { it.name in ['selectedcore', 'selectedclans', 'se
         }
     }
 
-    loom {
-        splitEnvironmentSourceSets()
+    // Split client/common source sets only for the subprojects that actually have
+    // client code (selectedclans, selectedpolice). selectedcore is server-only;
+    // calling splitEnvironmentSourceSets for it just creates an empty client jar.
+    if (project.name in ['selectedclans', 'selectedpolice']) {
+        loom {
+            splitEnvironmentSourceSets()
+        }
     }
 }

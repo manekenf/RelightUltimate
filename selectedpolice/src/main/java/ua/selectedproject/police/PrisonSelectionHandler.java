@@ -82,18 +82,26 @@ public class PrisonSelectionHandler {
         }
 
         int currentCount = db.countZonesByOwner(player.getUuid());
-        if (currentCount >= PoliceCommands.MAX_ZONES_PER_OFFICER) {
+        int maxZones = PoliceCommands.maxZonesPerOfficer();
+        if (currentCount >= maxZones) {
             player.sendMessage(Text.literal(
-                    "§cВи досягли ліміту зон в'язниці (" + PoliceCommands.MAX_ZONES_PER_OFFICER + ")."));
+                    "§cВи досягли ліміту зон в'язниці (" + maxZones + ")."));
             return;
         }
 
-        // Validate volume before saving
+        // Validate volume (both min and max) before saving
         PrisonZone temp = new PrisonZone(0, player.getUuid(), "",
                 a.getX(), a.getY(), a.getZ(), b.getX(), b.getY(), b.getZ());
-        if (temp.volume() > PoliceCommands.MAX_ZONE_VOLUME) {
+        int minVol = PoliceCommands.minZoneVolume();
+        int maxVol = PoliceCommands.maxZoneVolume();
+        if (temp.volume() < minVol) {
             player.sendMessage(Text.literal(
-                    "§cЗона занадто велика. Максимум §f" + PoliceCommands.MAX_ZONE_VOLUME + " §cблоків (зараз " + temp.volume() + ")."));
+                    "§cЗона занадто мала. Мінімум §f" + minVol + " §cблоків (зараз " + temp.volume() + ")."));
+            return;
+        }
+        if (temp.volume() > maxVol) {
+            player.sendMessage(Text.literal(
+                    "§cЗона занадто велика. Максимум §f" + maxVol + " §cблоків (зараз " + temp.volume() + ")."));
             return;
         }
 

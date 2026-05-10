@@ -53,12 +53,9 @@ public class ClanActionHandler {
             return;
         }
 
-        // Create the clan
-        Clan clan = db.createClan(name, tag, player.getUuid());
+        // Create the clan + add leader as first member, atomically.
+        Clan clan = db.createClanWithLeader(name, tag, player.getUuid(), player.getName().getString());
         if (clan != null) {
-            // Add leader as member with correct name
-            db.addMember(clan.getId(), player.getUuid(), player.getName().getString());
-
             // Broadcast to all online players
             String prefix = lang.get("prefix");
             Text announcement = Text.literal(lang.get("clan.create.success", prefix, name, tag));
@@ -82,16 +79,27 @@ public class ClanActionHandler {
         CoreLocalization lang = CoreLocalization.getInstance();
         MinecraftServer server = inviter.getServer();
 
-        // Get inviter's clan
+        // Get inviter's clan; only the leader can invite
         Clan clan = db.getClanByPlayer(inviter.getUuid());
-        if (clan == null || !clan.getLeaderUuid().equals(inviter.getUuid())) {
-            return; // Not a leader, ignore
+        if (clan == null) {
+            inviter.sendMessage(Text.literal("§cВи не в клані."));
+            return;
+        }
+        if (!clan.getLeaderUuid().equals(inviter.getUuid())) {
+            inviter.sendMessage(Text.literal("§cЗапрошувати може лише лідер клану."));
+            return;
         }
 
         // Find target player (must be online)
         ServerPlayerEntity target = server.getPlayerManager().getPlayer(targetName);
         if (target == null) {
             inviter.sendMessage(Text.literal(lang.get("clan.invite.player_offline")));
+            return;
+        }
+
+        // Self-invite makes no sense — leader is already in their own clan.
+        if (target.getUuid().equals(inviter.getUuid())) {
+            inviter.sendMessage(Text.literal("§cНе можна запросити самого себе."));
             return;
         }
 
@@ -113,18 +121,16 @@ public class ClanActionHandler {
                             .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
                                     "/clan accept " + clan.getId()))
                             .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                                    Text.literal("§aПрийняти / Accept"))));
+                                    Text.literal(lang.get("clan.invite.accept_hover")))));
 
             MutableText declineButton = Text.literal(" §c[✘]")
                     .styled(style -> style
                             .withClickEvent(new ClickEvent(ClickEvent.Action.RUN_COMMAND,
                                     "/clan decline " + clan.getId()))
                             .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                                    Text.literal("§cВідхилити / Decline"))));
+                                    Text.literal(lang.get("clan.invite.decline_hover")))));
 
-            MutableText inviteMsg = Text.literal(
-                    String.format("§6%s§r запрошує вас до клану §e%s§r! ", inviterName, clan.getName())
-            );
+            MutableText inviteMsg = Text.literal(lang.get("clan.invite.received", inviterName, clan.getName()));
             inviteMsg.append(acceptButton).append(declineButton);
             target.sendMessage(inviteMsg);
 
@@ -137,25 +143,33 @@ public class ClanActionHandler {
         CoreLocalization lang = CoreLocalization.getInstance();
 
         Clan clan = db.getClanByPlayer(kicker.getUuid());
-        if (clan == null || !clan.getLeaderUuid().equals(kicker.getUuid())) {
-            return; // Not a leader
+        if (clan == null) {
+            kicker.sendMessage(Text.literal("§cВи не в клані."));
+            return;
+        }
+        if (!clan.getLeaderUuid().equals(kicker.getUuid())) {
+            kicker.sendMessage(Text.literal("§cВиганяти може лише лідер клану."));
+            return;
         }
 
         UUID targetUuid;
         try {
             targetUuid = UUID.fromString(targetUuidStr);
         } catch (IllegalArgumentException e) {
+            kicker.sendMessage(Text.literal("§cНевірний ідентифікатор гравця."));
             return;
         }
 
         // Cannot kick yourself (the leader)
         if (targetUuid.equals(kicker.getUuid())) {
+            kicker.sendMessage(Text.literal("§cЛідер не може виганяти себе. Передайте лідерство або розпустіть клан."));
             return;
         }
 
         // Verify target is in this clan
         Clan targetClan = db.getClanByPlayer(targetUuid);
         if (targetClan == null || targetClan.getId() != clan.getId()) {
+            kicker.sendMessage(Text.literal("§cЦей гравець не в вашому клані."));
             return;
         }
 
@@ -207,15 +221,23 @@ public class ClanActionHandler {
             return;
         }
 
-        // Check player isn't already in a clan
-        if (db.isPlayerInAnyClan(player.getUuid())) {
+        // Try to add the member atomically — UNIQUE constraint on player_uuid is the
+        // source of truth. addMember returns null if the player is already in a clan
+        // (which can happen if another acceptance / admin add raced us).
+        var newMember = db.addMember(clanId, player.getUuid(), player.getName().getString());
+        if (newMember == null) {
             player.sendMessage(Text.literal(lang.get("clan.create.already_in_clan")));
             return;
         }
 
-        // Accept
+        // Membership succeeded — now mark the invite ACCEPTED. Also expire any other
+        // pending invites this player has so they can't be accepted on top of this one.
         db.updateInviteStatus(invite.getId(), ClanInvite.Status.ACCEPTED);
-        db.addMember(clanId, player.getUuid(), player.getName().getString());
+        for (var other : db.getPendingInvitesForPlayer(player.getUuid())) {
+            if (other.getId() != invite.getId()) {
+                db.updateInviteStatus(other.getId(), ClanInvite.Status.EXPIRED);
+            }
+        }
 
         Clan clan = db.getClanById(clanId);
         if (clan != null) {
@@ -230,10 +252,8 @@ public class ClanActionHandler {
                 }
             }
 
-            // Cancel deletion countdown if applicable
-            if (clan.getDeletionScheduledAt() != null) {
-                checkClanMemberThreshold(clan);
-            }
+            // Re-check threshold from fresh DB state (don't trust the stale Clan object)
+            checkClanMemberThreshold(clan);
         }
 
         LOGGER.info("{} accepted invite to clan {}", player.getName().getString(), clanId);

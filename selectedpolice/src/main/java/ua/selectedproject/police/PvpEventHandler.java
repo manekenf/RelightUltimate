@@ -26,12 +26,18 @@ public class PvpEventHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedPolice/PvpEvents");
 
     /**
-     * Tracks recent attacks on PVE players: attacker UUID → list of epoch seconds.
+     * Recent attacks on PVE players: attacker UUID → list of epoch seconds.
+     * <p>
+     * <b>Threading:</b> only mutated from the server thread — written by
+     * {@link ServerLivingEntityEvents#ALLOW_DAMAGE} (which fires on the server
+     * thread) and cleared on disconnect via {@link ServerPlayConnectionEvents#DISCONNECT}
+     * (also server thread). Plain {@link HashMap} is safe here.
      */
     private static final Map<UUID, List<Long>> attackTimestamps = new HashMap<>();
 
     /**
      * Players pending binding on next respawn: criminal UUID → officer UUID.
+     * Same server-thread-only invariant as {@link #attackTimestamps}.
      */
     static final Map<UUID, UUID> pendingBind = new HashMap<>();
 
@@ -164,6 +170,9 @@ public class PvpEventHandler {
             if (existing == team) {
                 scoreboard.removeScoreHolderFromTeam(playerName, team);
             }
+            // Removing the criminal tag falls back to the player's underlying PVP/PVE
+            // (or police) team. This is a deliberate hand-off, not a recursive cycle:
+            // applyPvpTeam early-returns if the player is still flagged criminal.
             PoliceDatabase db = PoliceDatabase.getInstance();
             if (db != null) {
                 applyPvpTeam(player, db.isPvp(player.getUuid()));
@@ -182,14 +191,15 @@ public class PvpEventHandler {
         Scoreboard scoreboard = server.getScoreboard();
 
         // Always update prefix in case it changed (e.g. after icon swap during dev).
+        boolean useIcons = ua.selectedproject.core.config.CoreConfig.getInstance().useIconGlyphs;
         Team pveTeam = scoreboard.getTeam("sp_pve");
         if (pveTeam == null) pveTeam = scoreboard.addTeam("sp_pve");
-        pveTeam.setPrefix(Text.literal("\uE103 "));   // pve icon
+        pveTeam.setPrefix(Text.literal(useIcons ? "\uE103 " : "[PVE] "));
         pveTeam.setColor(Formatting.GREEN);
 
         Team pvpTeam = scoreboard.getTeam("sp_pvp");
         if (pvpTeam == null) pvpTeam = scoreboard.addTeam("sp_pvp");
-        pvpTeam.setPrefix(Text.literal("\uE102 "));   // pvp icon
+        pvpTeam.setPrefix(Text.literal(useIcons ? "\uE102 " : "[PVP] "));
         pvpTeam.setColor(Formatting.RED);
 
         Team policeTeam = scoreboard.getTeam("sp_police");
@@ -233,8 +243,24 @@ public class PvpEventHandler {
         ServerPlayConnectionEvents.JOIN.register((handler, sender, server) -> {
             deferredTagApply.add(handler.player.getUuid());
             ServerPlayerEntity p = handler.player;
-            server.execute(() -> BindingNetworking.syncAllToPlayer(p));
+            server.execute(() -> {
+                // Player may have disconnected before this runs; guard before use.
+                if (p.networkHandler == null || p.isDisconnected()) return;
+                BindingNetworking.syncAllToPlayer(p);
+            });
         });
+
+        // Clean up per-player static state on disconnect to avoid slow leaks.
+        net.fabricmc.fabric.api.networking.v1.ServerPlayConnectionEvents.DISCONNECT.register(
+                (handler, server) -> {
+                    UUID uuid = handler.player.getUuid();
+                    attackTimestamps.remove(uuid);
+                    pendingBind.remove(uuid);
+                    PoliceEventHandler.clearBoundPosition(uuid);
+                    deferredTagApply.remove(uuid);
+                    PoliceDatabase db = PoliceDatabase.getInstance();
+                    if (db != null) db.clearCacheFor(uuid);
+                });
     }
 
     private static void registerDeferredTagApply() {

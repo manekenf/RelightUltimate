@@ -12,6 +12,10 @@ public class PortalLighterItem {
     public static Item PORTAL_LIGHTER;
 
     public static void register() {
+        // Intentionally indestructible: the lighter is an admin/civic item, not a
+        // consumable — we want a single instance per shop/clan that can't be ground
+        // away by wear. If we ever want it to behave like flint-and-steel, switch
+        // maxDamage(...) here and add take-damage in PortalLighter.useOnBlock.
         PORTAL_LIGHTER = Registry.register(
                 Registries.ITEM,
                 Identifier.of(SelectedCore.MOD_ID, "portal_lighter"),

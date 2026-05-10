@@ -58,7 +58,7 @@ public class ClanCommands {
                             return handleLeave(player);
                         }))
                 .then(literal("info")
-                        .then(argument("name", StringArgumentType.greedyString())
+                        .then(argument("name", StringArgumentType.string())
                                 .executes(ctx -> {
                                     ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                                     String name = StringArgumentType.getString(ctx, "name");
@@ -96,8 +96,8 @@ public class ClanCommands {
                         }))
         );
 
-        // /clansmod (clan-specific admin commands)
-        dispatcher.register(literal("clansmod")
+        // /selectedclans admin (legacy alias /clansmod kept for muscle memory)
+        var selectedClansRoot = dispatcher.register(literal("selectedclans")
                 .requires(source -> source.hasPermissionLevel(2))
                 .then(literal("setboard")
                         .executes(ctx -> {
@@ -130,6 +130,9 @@ public class ClanCommands {
                                     return 1;
                                 })))
         );
+        dispatcher.register(literal("clansmod")
+                .requires(source -> source.hasPermissionLevel(2))
+                .redirect(selectedClansRoot));
 
         // /clanadmin
         dispatcher.register(literal("clanadmin")
@@ -186,7 +189,7 @@ public class ClanCommands {
 
         Clan clan = db.getClanByPlayer(player.getUuid());
         if (clan == null) {
-            player.sendMessage(Text.literal("§cYou are not in a clan."));
+            player.sendMessage(Text.literal(lang.get("chat.not_in_clan")));
             return 0;
         }
         if (clan.getLeaderUuid().equals(player.getUuid())) {
@@ -206,7 +209,7 @@ public class ClanCommands {
         Clan foundClan = db.getClanByName(nameOrTag);
         if (foundClan == null) foundClan = db.getClanByTag(nameOrTag);
         if (foundClan == null) {
-            player.sendMessage(Text.literal("§cClan not found."));
+            player.sendMessage(Text.literal(lang.get("chat.clan_not_found")));
             return 0;
         }
         final Clan clan = foundClan;
@@ -229,7 +232,7 @@ public class ClanCommands {
 
         Clan clan = db.getClanByPlayer(player.getUuid());
         if (clan == null) {
-            player.sendMessage(Text.literal("§cYou are not in a clan."));
+            player.sendMessage(Text.literal(lang.get("chat.not_in_clan")));
             return 0;
         }
         String formatted = lang.get("chat.clan.format", player.getName().getString(), message);
@@ -248,7 +251,7 @@ public class ClanCommands {
 
         Clan playerClan = db.getClanByPlayer(player.getUuid());
         if (playerClan == null || !playerClan.getLeaderUuid().equals(player.getUuid())) {
-            player.sendMessage(Text.literal("§cOnly clan leaders can use this chat."));
+            player.sendMessage(Text.literal(lang.get("chat.leader_only")));
             return 0;
         }
         String formatted = lang.get("chat.leader.format", player.getName().getString(), message);
@@ -284,9 +287,8 @@ public class ClanCommands {
         if (db.isNameTaken(name)) { source.sendError(Text.literal("§cClan name '" + name + "' is already taken.")); return 0; }
         if (db.isTagTaken(tag)) { source.sendError(Text.literal("§cClan tag '" + tag + "' is already taken.")); return 0; }
 
-        Clan clan = db.createClan(name, tag, leader.getUuid());
+        Clan clan = db.createClanWithLeader(name, tag, leader.getUuid(), leader.getName().getString());
         if (clan != null) {
-            db.addMember(clan.getId(), leader.getUuid(), leader.getName().getString());
             final String ft = tag;
             source.sendFeedback(() -> Text.literal("§aClan §6" + name + " §8[§e" + ft + "§8]§a created with leader §e" + leaderName), true);
             return 1;
@@ -388,9 +390,14 @@ public class ClanCommands {
         source.sendFeedback(() -> Text.literal("§6§l--- Clans (" + clans.size() + ") ---"), false);
         for (Clan clan : clans) {
             int members = db.getMemberCount(clan.getId());
+            String leaderName = db.getClanMembers(clan.getId()).stream()
+                    .filter(m -> m.getPlayerUuid().equals(clan.getLeaderUuid()))
+                    .map(ClanMember::getPlayerName)
+                    .findFirst()
+                    .orElse(clan.getLeaderUuid().toString().substring(0, 8));
             source.sendFeedback(() -> Text.literal(String.format(
                     "  §6%s §8[§e%s§8] §7- %d members, leader: %s%s",
-                    clan.getName(), clan.getTag(), members, clan.getLeaderUuid().toString().substring(0, 8),
+                    clan.getName(), clan.getTag(), members, leaderName,
                     clan.getShopNumber() != null ? ", shop #" + clan.getShopNumber() : "")), false);
         }
         return 1;

@@ -28,7 +28,10 @@ public final class BindingHandler {
     private static final Logger LOGGER = LoggerFactory.getLogger("SelectedPolice/Binding");
 
     private static final double LEASH_SOFT_RADIUS = 4.0;
-    private static final double LEASH_HARD_RADIUS = 15.0;
+    /** Beyond this distance the captive is yanked instantly to the officer instead of
+     *  being pulled by velocity. Tuned at 10 — closer than the original 15 felt jarring,
+     *  smaller than 8 ends up tug-warring with sprinting officers. */
+    private static final double LEASH_HARD_RADIUS = 10.0;
     private static final double LEASH_MAX_PULL    = 0.45;
     private static final int    PARTICLE_INTERVAL_TICKS = 4;
 
@@ -117,8 +120,7 @@ public final class BindingHandler {
             world.spawnEntity(drop);
         }
         // Reset to NONE only if not bound; if bound, send BOUND state instead.
-        PoliceDatabase db2 = PoliceDatabase.getInstance();
-        BindingSyncPayload.State newState = (db2 != null && db2.isBound(target.getUuid()))
+        BindingSyncPayload.State newState = db.isBound(target.getUuid())
                 ? BindingSyncPayload.State.BOUND
                 : BindingSyncPayload.State.NONE;
         BindingNetworking.broadcast(officer.getServer(), target.getUuid(), newState);
@@ -166,11 +168,16 @@ public final class BindingHandler {
         }
     }
 
+    /** Hard ceiling on the per-leash particle count so a long pull doesn't flood the
+     *  client with hundreds of particle packets per tick. The visible effect at this
+     *  cap is still a continuous dotted line. */
+    private static final int MAX_PARTICLE_STEPS = 24;
+
     private static void spawnLeashParticles(ServerPlayerEntity officer, ServerPlayerEntity captive) {
         Vec3d from = captive.getPos().add(0, 1.0, 0);
         Vec3d to   = officer.getPos().add(0, 1.0, 0);
         Vec3d diff = to.subtract(from);
-        int steps = (int) Math.max(4, diff.length() * 2);
+        int steps = Math.min(MAX_PARTICLE_STEPS, Math.max(4, (int) (diff.length() * 2)));
         DustParticleEffect dust = new DustParticleEffect(new Vector3f(0.85f, 0.15f, 0.15f), 1.0f);
         ServerWorld world = officer.getServerWorld();
         for (int i = 0; i < steps; i++) {
