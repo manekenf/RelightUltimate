@@ -1,5 +1,5 @@
 plugins {
-    id 'fabric-loom' version '1.9-SNAPSHOT' apply false
+    id 'fabric-loom' version '1.10.1' apply false
     id 'com.gradleup.shadow' version '8.3.5' apply false
 }
 
@@ -37,6 +37,7 @@ configure(subprojects.findAll { it.name != 'papibridge' }) {
         maven { url 'https://maven.fabricmc.net/' }
         maven { url 'https://m2.dv8tion.net/releases' }
         maven { url 'https://repo.papermc.io/repository/maven-public/' }
+        maven { url 'https://hub.spigotmc.org/nexus/content/repositories/snapshots/'}
     }
 
     dependencies {
@@ -54,9 +55,6 @@ configure(subprojects.findAll { it.name != 'papibridge' }) {
         }
     }
 
-    // Split client/common source sets only for the subprojects that actually have
-    // client code (selectedclans, selectedpolice). selectedcore is server-only;
-    // calling splitEnvironmentSourceSets for it just creates an empty client jar.
     if (project.name in ['selectedclans', 'selectedpolice']) {
         loom {
             splitEnvironmentSourceSets()

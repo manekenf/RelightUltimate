@@ -58,7 +58,6 @@ public class PoliceCommands {
         registerPoliceCommand(dispatcher);
         registerAPoliceCommand(dispatcher);
         registerAPvpCommand(dispatcher);
-        BindingNetworking.registerPayloads();
     }
 
     // ==================== /pvp ====================

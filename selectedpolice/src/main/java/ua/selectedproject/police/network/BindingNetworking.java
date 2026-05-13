@@ -12,9 +12,14 @@ import java.util.UUID;
 public final class BindingNetworking {
     private BindingNetworking() {}
 
+    private static boolean registered = false;
+
     /** Register the payload type. Called from main mod init (both sides need this). */
     public static void registerPayloads() {
+        if (registered) return;
+        registered = true;
         PayloadTypeRegistry.playS2C().register(BindingSyncPayload.PACKET_ID, BindingSyncPayload.CODEC);
+
     }
 
     /** Broadcast a state change to all online players (so they all render the captive correctly). */

@@ -7,7 +7,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ua.selectedproject.core.api.AddonRegistry;
 import ua.selectedproject.core.api.SelectedAddon;
-import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
+import ua.selectedproject.police.network.BindingNetworking;
 import ua.selectedproject.police.network.BindingSyncPayload;
 
 import java.util.List;
@@ -20,7 +20,8 @@ public class SelectedPolice implements ModInitializer, SelectedAddon {
     @Override
     public void onInitialize() {
         LOGGER.info("SelectedPolice initializing...");
-        PayloadTypeRegistry.playS2C().register(BindingSyncPayload.PACKET_ID, BindingSyncPayload.CODEC);
+//        PayloadTypeRegistry.playS2C().register(BindingSyncPayload.PACKET_ID, BindingSyncPayload.CODEC);
+        BindingNetworking.registerPayloads();
         PoliceCommands.register();
         PvpEventHandler.register();
         BindingHandler.register();
