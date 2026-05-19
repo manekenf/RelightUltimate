@@ -359,7 +359,7 @@ public class PoliceCommands {
 
         db.releaseFromCustody(target.getUuid());
         BindingNetworking.broadcast(source.getServer(), target.getUuid(),
-                BindingSyncPayload.State.NONE);
+                BindingSyncPayload.State.NONE, null);
         db.setCriminal(target.getUuid(), false);
         PvpEventHandler.applyCriminalTag(target, false);
 
@@ -486,7 +486,7 @@ public class PoliceCommands {
         Instant boundUntil = Instant.now().plusSeconds(minutes * 60L);
         db.setBound(tu, true, boundUntil, officer.getUuid());
         BindingNetworking.broadcast(source.getServer(), tu,
-                BindingSyncPayload.State.BOUND);
+                BindingSyncPayload.State.BOUND, officer.getUuid());
         db.setLeashed(tu, false, null);
         db.setCaught(tu, true, officer.getUuid());
         db.setPrisonSpawn(tu, chosen.world(), chosen.targetX(), chosen.targetY(), chosen.targetZ());
@@ -547,7 +547,7 @@ public class PoliceCommands {
 
         db.releaseFromCustody(targetUuid);
         BindingNetworking.broadcast(source.getServer(), target.getUuid(),
-                BindingSyncPayload.State.NONE);
+                BindingSyncPayload.State.NONE, null);
         db.setCriminal(targetUuid, false);
         PvpEventHandler.applyCriminalTag(target, false);
 

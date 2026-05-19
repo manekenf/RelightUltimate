@@ -6,22 +6,23 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import ua.selectedproject.police.network.BindingSyncPayload;
 
+import java.util.UUID;
+
 public class SelectedPoliceClient implements ClientModInitializer {
     public static final Logger LOGGER = LoggerFactory.getLogger("SelectedPoliceClient");
 
     @Override
     public void onInitializeClient() {
         ClientPlayNetworking.registerGlobalReceiver(BindingSyncPayload.PACKET_ID,
-                (payload, ctx) -> {
-                    // Run on render thread — cache reads/writes happen there too.
-                    ctx.client().execute(() -> {
-                        if (payload.state() == BindingSyncPayload.State.NONE) {
-                            BindingClientCache.remove(payload.player());
-                        } else {
-                            BindingClientCache.set(payload.player(), payload.state());
-                        }
-                    });
-                });
+                (payload, ctx) -> ctx.client().execute(() -> {
+                    if (payload.state() == BindingSyncPayload.State.NONE) {
+                        BindingClientCache.remove(payload.player());
+                    } else {
+                        UUID holder = payload.holder();
+                        BindingClientCache.set(payload.player(), payload.state(),
+                                BindingSyncPayload.NO_HOLDER.equals(holder) ? null : holder);
+                    }
+                }));
 
         LOGGER.info("SelectedPolice client initialized");
     }

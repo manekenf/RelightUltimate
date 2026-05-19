@@ -5,7 +5,9 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [],
   "client": [
-    "PlayerEntityModelMixin"
+    "PlayerEntityModelMixin",
+    "WorldRendererMixin",
+    "EntityRendererAccessor"
   ],
   "injectors": { "defaultRequire": 1 }
 }

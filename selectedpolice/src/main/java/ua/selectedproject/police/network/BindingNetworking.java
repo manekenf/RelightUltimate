@@ -19,13 +19,20 @@ public final class BindingNetworking {
         if (registered) return;
         registered = true;
         PayloadTypeRegistry.playS2C().register(BindingSyncPayload.PACKET_ID, BindingSyncPayload.CODEC);
-
     }
 
-    /** Broadcast a state change to all online players (so they all render the captive correctly). */
-    public static void broadcast(MinecraftServer server, UUID player, BindingSyncPayload.State state) {
+    /**
+     * Broadcast a binding state change to every online player.
+     * <p>
+     * For {@link BindingSyncPayload.State#LEASHED} and {@link BindingSyncPayload.State#BOUND}
+     * supply the officer UUID. For {@link BindingSyncPayload.State#NONE} pass {@code null}
+     * (the helper will substitute {@link BindingSyncPayload#NO_HOLDER}).
+     */
+    public static void broadcast(MinecraftServer server, UUID captive,
+                                 BindingSyncPayload.State state, UUID holder) {
         if (server == null) return;
-        BindingSyncPayload payload = new BindingSyncPayload(player, state);
+        UUID h = (holder != null) ? holder : BindingSyncPayload.NO_HOLDER;
+        BindingSyncPayload payload = new BindingSyncPayload(captive, state, h);
         for (ServerPlayerEntity p : server.getPlayerManager().getPlayerList()) {
             ServerPlayNetworking.send(p, payload);
         }
@@ -41,10 +48,17 @@ public final class BindingNetworking {
             PlayerPvpStatus s = db.getPvpStatus(p.getUuid());
             if (s == null) continue;
             BindingSyncPayload.State state;
-            if (s.isBound())        state = BindingSyncPayload.State.BOUND;
-            else if (s.isLeashed()) state = BindingSyncPayload.State.LEASHED;
-            else                    continue;
-            ServerPlayNetworking.send(recipient, new BindingSyncPayload(p.getUuid(), state));
+            UUID holder;
+            if (s.isBound()) {
+                state = BindingSyncPayload.State.BOUND;
+                holder = s.boundBy() != null ? s.boundBy() : BindingSyncPayload.NO_HOLDER;
+            } else if (s.isLeashed()) {
+                state = BindingSyncPayload.State.LEASHED;
+                holder = s.leashedTo() != null ? s.leashedTo() : BindingSyncPayload.NO_HOLDER;
+            } else {
+                continue;
+            }
+            ServerPlayNetworking.send(recipient, new BindingSyncPayload(p.getUuid(), state, holder));
         }
     }
 }

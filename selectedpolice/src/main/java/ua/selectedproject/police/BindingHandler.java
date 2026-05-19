@@ -33,7 +33,6 @@ public final class BindingHandler {
      *  smaller than 8 ends up tug-warring with sprinting officers. */
     private static final double LEASH_HARD_RADIUS = 10.0;
     private static final double LEASH_MAX_PULL    = 0.45;
-    private static final int    PARTICLE_INTERVAL_TICKS = 4;
 
     private static int tickCounter = 0;
 
@@ -94,7 +93,7 @@ public final class BindingHandler {
         PvpEventHandler.applyCriminalTag(target, true);
 
         BindingNetworking.broadcast(officer.getServer(), target.getUuid(),
-                BindingSyncPayload.State.LEASHED);
+                BindingSyncPayload.State.LEASHED, officer.getUuid());
 
         officer.swingHand(Hand.MAIN_HAND, true);
         ServerWorld world = officer.getServerWorld();
@@ -120,17 +119,22 @@ public final class BindingHandler {
             world.spawnEntity(drop);
         }
         // Reset to NONE only if not bound; if bound, send BOUND state instead.
-        BindingSyncPayload.State newState = db.isBound(target.getUuid())
-                ? BindingSyncPayload.State.BOUND
-                : BindingSyncPayload.State.NONE;
-        BindingNetworking.broadcast(officer.getServer(), target.getUuid(), newState);
+        BindingSyncPayload.State newState;
+        UUID newHolder;
+        if (db.isBound(target.getUuid())) {
+            newState = BindingSyncPayload.State.BOUND;
+            newHolder = db.getPvpStatus(target.getUuid()).boundBy();
+        } else {
+            newState = BindingSyncPayload.State.NONE;
+            newHolder = null;
+        }
+        BindingNetworking.broadcast(officer.getServer(), target.getUuid(), newState, newHolder);
         officer.sendMessage(Text.literal("§a⛓ Відв'язано §e" + target.getName().getString()));
         target.sendMessage(Text.literal("§aВас відв'язали."));
     }
 
     private static void onTick(net.minecraft.server.MinecraftServer server) {
         tickCounter++;
-        boolean drawLine = tickCounter % PARTICLE_INTERVAL_TICKS == 0;
 
         PoliceDatabase db = PoliceDatabase.getInstance();
         if (db == null) return;
@@ -164,26 +168,6 @@ public final class BindingHandler {
                 captive.velocityModified = true;
             }
 
-            if (drawLine) spawnLeashParticles(officer, captive);
-        }
-    }
-
-    /** Hard ceiling on the per-leash particle count so a long pull doesn't flood the
-     *  client with hundreds of particle packets per tick. The visible effect at this
-     *  cap is still a continuous dotted line. */
-    private static final int MAX_PARTICLE_STEPS = 24;
-
-    private static void spawnLeashParticles(ServerPlayerEntity officer, ServerPlayerEntity captive) {
-        Vec3d from = captive.getPos().add(0, 1.0, 0);
-        Vec3d to   = officer.getPos().add(0, 1.0, 0);
-        Vec3d diff = to.subtract(from);
-        int steps = Math.min(MAX_PARTICLE_STEPS, Math.max(4, (int) (diff.length() * 2)));
-        DustParticleEffect dust = new DustParticleEffect(new Vector3f(0.85f, 0.15f, 0.15f), 1.0f);
-        ServerWorld world = officer.getServerWorld();
-        for (int i = 0; i < steps; i++) {
-            double t = i / (double) steps;
-            Vec3d p = from.add(diff.multiply(t));
-            world.spawnParticles(dust, p.x, p.y, p.z, 1, 0, 0, 0, 0);
         }
     }
 }

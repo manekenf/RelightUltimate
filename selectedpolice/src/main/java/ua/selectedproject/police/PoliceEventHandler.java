@@ -61,7 +61,7 @@ public class PoliceEventHandler {
                     if (boundUntil != null && Instant.now().isAfter(boundUntil)) {
                         // Binding expired
                         db.setBound(uuid, false, null, null);
-                        BindingNetworking.broadcast(server, uuid, BindingSyncPayload.State.NONE);
+                        BindingNetworking.broadcast(server, uuid, BindingSyncPayload.State.NONE, null);
                         boundPositions.remove(uuid);
                         player.sendMessage(Text.literal("§aВас звільнено. Час утримання минув."));
                         continue;
@@ -98,25 +98,6 @@ public class PoliceEventHandler {
                             player.sendMessage(Text.literal(
                                     "§c⛓ Вас веде §e" + officer.getName().getString()), true);
                         }
-                    }
-                }
-
-                // Handle leashed player: teleport to officer if > 6 blocks away (every 10 ticks)
-                if (doDistanceCheck && status.isLeashed()) {
-                    UUID leashedTo = status.leashedTo();
-                    if (leashedTo == null) {
-                        db.setLeashed(uuid, false, null);
-                        continue;
-                    }
-                    ServerPlayerEntity officer = server.getPlayerManager().getPlayer(leashedTo);
-                    if (officer == null) {
-                        // Officer offline — unleash
-                        db.setLeashed(uuid, false, null);
-                        player.sendMessage(Text.literal("§eОфіцер вийшов зі серверу. Прив'язку знято."));
-                        continue;
-                    }
-                    if (player.squaredDistanceTo(officer.getPos()) > 36.0) { // 6² = 36
-                        player.requestTeleport(officer.getX(), officer.getY(), officer.getZ());
                     }
                 }
             }

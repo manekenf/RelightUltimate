@@ -105,7 +105,8 @@ public class PvpEventHandler {
             PoliceEventHandler.storeBoundPosition(uuid, newPlayer.getPos());
 
             MinecraftServer server = newPlayer.getServer();
-            BindingNetworking.broadcast(server, uuid, BindingSyncPayload.State.BOUND);
+            BindingNetworking.broadcast(server, uuid,
+                    BindingSyncPayload.State.NONE, null);
 
             if (server != null) {
                 ServerPlayerEntity officer = server.getPlayerManager().getPlayer(officerUuid);
